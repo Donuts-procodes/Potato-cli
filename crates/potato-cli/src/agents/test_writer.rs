@@ -14,18 +14,21 @@ impl Subagent for TestWriterAgent {
     }
 
     fn system_prompt(&self) -> String {
-        r#"You are a Senior Test Engineer. Your ONLY job is to write comprehensive tests.
+        let assembler = crate::engine::context::ContextAssembler::new(".");
+        let ctx = assembler.assemble().unwrap_or_else(|_| crate::engine::context::ProjectContext {
+            os: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+            working_dir: ".".to_string(),
+            detected_toolchains: Vec::new(),
+            git_branch: None,
+            modified_files: Vec::new(),
+            relevant_lessons: Vec::new(),
+        });
+        self.system_prompt_with_context(&ctx)
+    }
 
-Rules:
-- Write unit tests for every public function.
-- Write integration tests for cross-module interactions.
-- Cover happy paths, edge cases, error cases, and boundary conditions.
-- Use the project's native test framework (e.g., #[test] for Rust, pytest for Python).
-- Test files go in the standard location for the language.
-- NO mocking unless absolutely necessary — prefer real implementations.
-
-Output JSON with: "thought", "phase": "IMPLEMENTATION", "action": tool action."#
-            .to_string()
+    fn system_prompt_with_context(&self, context: &crate::engine::context::ProjectContext) -> String {
+        crate::llm::SystemPromptBuilder::build(&TaskCategory::Testing, context)
     }
 
     fn can_handle(&self, category: &TaskCategory) -> bool {

@@ -1,0 +1,23 @@
+# Potato CLI Configuration
+
+[llm]
+model = "gpt-4o"
+temperature = 0.1
+timeout_seconds = 180
+
+[cost]
+max_cost_usd = 5.00
+warn_at_usd = 3.00
+
+[tools]
+blocked_commands = ["rm -rf /", "format C:", "mkfs"]
+
+[tools.Reviewer]
+allowed_actions = ["read_file", "list_dir", "finish"]
+
+[[agents]]
+name = "StyleEnforcer"
+category = "review"
+max_turns = 10
+model = "gpt-4o-mini"
+system_prompt = "Verify that all functions have documentation comments."

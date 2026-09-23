@@ -12,19 +12,21 @@ impl Subagent for DependencyAuditorAgent {
     fn name(&self) -> &str { "DependencyAuditor" }
 
     fn system_prompt(&self) -> String {
-        r#"You are a Senior Supply Chain Security Engineer. Your ONLY job is to audit project dependencies.
+        let assembler = crate::engine::context::ContextAssembler::new(".");
+        let ctx = assembler.assemble().unwrap_or_else(|_| crate::engine::context::ProjectContext {
+            os: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+            working_dir: ".".to_string(),
+            detected_toolchains: Vec::new(),
+            git_branch: None,
+            modified_files: Vec::new(),
+            relevant_lessons: Vec::new(),
+        });
+        self.system_prompt_with_context(&ctx)
+    }
 
-Checks to perform:
-1. Run dependency audit tools (cargo audit, npm audit, pip-audit).
-2. Identify outdated dependencies and recommend updates.
-3. Check for known CVEs in current dependency versions.
-4. Detect license conflicts (e.g., GPL dependency in MIT project).
-5. Find unnecessary dependencies that could be removed.
-6. Check for typosquatting (suspiciously named packages).
-
-Report each finding as an issue with severity, package name, and recommendation.
-
-Output JSON with: "thought", "phase": "VERIFY", "action": tool action."#.to_string()
+    fn system_prompt_with_context(&self, context: &crate::engine::context::ProjectContext) -> String {
+        crate::llm::SystemPromptBuilder::build(&TaskCategory::Dependencies, context)
     }
 
     fn can_handle(&self, category: &TaskCategory) -> bool { *category == TaskCategory::Dependencies }

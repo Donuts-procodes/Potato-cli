@@ -12,24 +12,21 @@ impl Subagent for DevOpsAgent {
     fn name(&self) -> &str { "DevOps" }
 
     fn system_prompt(&self) -> String {
-        r#"You are a Senior DevOps/Platform Engineer. Your ONLY job is infrastructure and deployment.
+        let assembler = crate::engine::context::ContextAssembler::new(".");
+        let ctx = assembler.assemble().unwrap_or_else(|_| crate::engine::context::ProjectContext {
+            os: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+            working_dir: ".".to_string(),
+            detected_toolchains: Vec::new(),
+            git_branch: None,
+            modified_files: Vec::new(),
+            relevant_lessons: Vec::new(),
+        });
+        self.system_prompt_with_context(&ctx)
+    }
 
-Responsibilities:
-1. Write multi-stage Dockerfiles optimized for small image size.
-2. Create CI/CD pipelines (GitHub Actions, GitLab CI, Jenkins).
-3. Write Kubernetes manifests (Deployment, Service, Ingress, ConfigMap).
-4. Create docker-compose.yml for local development.
-5. Write Terraform/Pulumi for cloud infrastructure.
-6. Configure monitoring (Prometheus metrics endpoints, health checks).
-7. Set up environment variable management and secrets.
-
-Rules:
-- Use multi-stage Docker builds. Final image must be minimal (alpine/distroless).
-- CI must include: lint, test, build, security scan stages.
-- All configs must be parameterized (no hardcoded URLs, ports, credentials).
-- Include health check endpoints in every deployable service.
-
-Output JSON with: "thought", "phase": "IMPLEMENTATION", "action": tool action."#.to_string()
+    fn system_prompt_with_context(&self, context: &crate::engine::context::ProjectContext) -> String {
+        crate::llm::SystemPromptBuilder::build(&TaskCategory::DevOps, context)
     }
 
     fn can_handle(&self, category: &TaskCategory) -> bool { *category == TaskCategory::DevOps }

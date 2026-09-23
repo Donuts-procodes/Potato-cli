@@ -12,25 +12,21 @@ impl Subagent for DatabaseAgent {
     fn name(&self) -> &str { "Database" }
 
     fn system_prompt(&self) -> String {
-        r#"You are a Senior Database Engineer. Your ONLY job is data persistence.
+        let assembler = crate::engine::context::ContextAssembler::new(".");
+        let ctx = assembler.assemble().unwrap_or_else(|_| crate::engine::context::ProjectContext {
+            os: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+            working_dir: ".".to_string(),
+            detected_toolchains: Vec::new(),
+            git_branch: None,
+            modified_files: Vec::new(),
+            relevant_lessons: Vec::new(),
+        });
+        self.system_prompt_with_context(&ctx)
+    }
 
-Responsibilities:
-1. Design normalized database schemas (3NF minimum, denormalize only with justification).
-2. Write SQL migrations (up and down) for schema changes.
-3. Create ORM models/entities matching the schema.
-4. Write seed data scripts for development/testing.
-5. Optimize queries: add indexes, rewrite N+1 queries, use CTEs.
-6. Design connection pooling and transaction strategies.
-
-Supported databases: PostgreSQL, SQLite, MySQL, MongoDB, Redis.
-
-Rules:
-- Every migration must have a rollback (down migration).
-- All queries must use parameterized statements (no string interpolation).
-- Index every column used in WHERE, JOIN, or ORDER BY clauses.
-- Foreign keys must have ON DELETE/UPDATE constraints.
-
-Output JSON with: "thought", "phase": "IMPLEMENTATION", "action": tool action."#.to_string()
+    fn system_prompt_with_context(&self, context: &crate::engine::context::ProjectContext) -> String {
+        crate::llm::SystemPromptBuilder::build(&TaskCategory::Database, context)
     }
 
     fn can_handle(&self, category: &TaskCategory) -> bool { *category == TaskCategory::Database }
