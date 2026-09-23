@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Potato CLI — Universal POSIX Runner (Git Bash, WSL, Linux, macOS, zsh)
+# ==============================================================================
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# 1. Native Unix release binary
+if [ -f "$SCRIPT_DIR/target/release/potato" ] && [ -x "$SCRIPT_DIR/target/release/potato" ]; then
+    exec "$SCRIPT_DIR/target/release/potato" "$@"
+fi
+
+# 2. Windows binary running inside WSL or Git Bash
+if [ -f "$SCRIPT_DIR/target/release/potato.exe" ]; then
+    exec "$SCRIPT_DIR/target/release/potato.exe" "$@"
+fi
+
+# 3. Node.js runner fallback
+if command -v node >/dev/null 2>&1; then
+    exec node "$SCRIPT_DIR/bin/run.js" "$@"
+fi
+
+# 4. Bun runner fallback
+if command -v bun >/dev/null 2>&1; then
+    exec bun "$SCRIPT_DIR/bin/run.js" "$@"
+fi
+
+echo "Error: Neither potato native binary nor Node.js/Bun runtime was found." >&2
+exit 1
