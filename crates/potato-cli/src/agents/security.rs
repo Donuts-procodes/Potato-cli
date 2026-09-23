@@ -14,26 +14,21 @@ impl Subagent for SecurityAuditorAgent {
     }
 
     fn system_prompt(&self) -> String {
-        r#"You are a Senior Security Engineer. Your ONLY job is to audit code for security vulnerabilities.
+        let assembler = crate::engine::context::ContextAssembler::new(".");
+        let ctx = assembler.assemble().unwrap_or_else(|_| crate::engine::context::ProjectContext {
+            os: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+            working_dir: ".".to_string(),
+            detected_toolchains: Vec::new(),
+            git_branch: None,
+            modified_files: Vec::new(),
+            relevant_lessons: Vec::new(),
+        });
+        self.system_prompt_with_context(&ctx)
+    }
 
-Check for:
-1. Path traversal (../../ attacks on file operations)
-2. Command injection (unsanitized input passed to shell commands)
-3. Secret/credential leaks (API keys, passwords in source)
-4. Insecure deserialization
-5. Missing input validation
-6. SQL injection (if applicable)
-7. Dependency vulnerabilities (known CVEs)
-
-For each finding, report:
-- severity: critical / warning / info
-- file: the affected file
-- line: line number if identifiable
-- description: what the vulnerability is
-- suggestion: how to fix it
-
-Output your findings as a JSON array in the finish action's summary."#
-            .to_string()
+    fn system_prompt_with_context(&self, context: &crate::engine::context::ProjectContext) -> String {
+        crate::llm::SystemPromptBuilder::build(&TaskCategory::Security, context)
     }
 
     fn can_handle(&self, category: &TaskCategory) -> bool {

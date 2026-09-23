@@ -102,6 +102,11 @@ pub trait Subagent: Send + Sync {
     /// The system prompt that defines this subagent's personality and constraints.
     fn system_prompt(&self) -> String;
 
+    /// Generates a hardened system prompt tailored with active project context.
+    fn system_prompt_with_context(&self, _context: &crate::engine::context::ProjectContext) -> String {
+        self.system_prompt()
+    }
+
     /// Returns `true` if this subagent can handle the given task category.
     fn can_handle(&self, category: &TaskCategory) -> bool;
 

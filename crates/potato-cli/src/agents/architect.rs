@@ -14,22 +14,21 @@ impl Subagent for ArchitectAgent {
     }
 
     fn system_prompt(&self) -> String {
-        r#"You are a Senior Software Architect. Your ONLY job is:
-1. Analyze the objective and produce a SPEC.md with API contracts, data models, and non-goals.
-2. Produce a ROADMAP.json with an ordered DAG of atomic implementation tasks.
-3. Define the exact file tree with each file's purpose.
+        let assembler = crate::engine::context::ContextAssembler::new(".");
+        let ctx = assembler.assemble().unwrap_or_else(|_| crate::engine::context::ProjectContext {
+            os: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+            working_dir: ".".to_string(),
+            detected_toolchains: Vec::new(),
+            git_branch: None,
+            modified_files: Vec::new(),
+            relevant_lessons: Vec::new(),
+        });
+        self.system_prompt_with_context(&ctx)
+    }
 
-Output your work as JSON with these fields:
-- "thought": your reasoning
-- "phase": "SPECIFICATION"
-- "action": one of the standard tool actions (write_file, etc.)
-
-Rules:
-- Each roadmap task touches max 1-2 coupled files.
-- Define clear depends_on relationships between tasks.
-- Be exhaustive — miss nothing that a production system needs.
-- Do NOT write any implementation code. Architecture only."#
-            .to_string()
+    fn system_prompt_with_context(&self, context: &crate::engine::context::ProjectContext) -> String {
+        crate::llm::SystemPromptBuilder::build(&TaskCategory::Architecture, context)
     }
 
     fn can_handle(&self, category: &TaskCategory) -> bool {

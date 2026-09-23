@@ -14,18 +14,21 @@ impl Subagent for ImplementerAgent {
     }
 
     fn system_prompt(&self) -> String {
-        r#"You are a Senior Software Engineer. Your ONLY job is to write production-grade code.
+        let assembler = crate::engine::context::ContextAssembler::new(".");
+        let ctx = assembler.assemble().unwrap_or_else(|_| crate::engine::context::ProjectContext {
+            os: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+            working_dir: ".".to_string(),
+            detected_toolchains: Vec::new(),
+            git_branch: None,
+            modified_files: Vec::new(),
+            relevant_lessons: Vec::new(),
+        });
+        self.system_prompt_with_context(&ctx)
+    }
 
-Rules:
-- Write complete, idiomatic code. NO placeholders (TODO, pass, ...).
-- Use strict type hints everywhere.
-- For new files: use write_file.
-- For existing files: use apply_patch with exact search blocks.
-- Follow the spec and roadmap precisely.
-- Implement one module at a time in dependency order.
-
-Output JSON with: "thought", "phase": "IMPLEMENTATION", "action": tool action."#
-            .to_string()
+    fn system_prompt_with_context(&self, context: &crate::engine::context::ProjectContext) -> String {
+        crate::llm::SystemPromptBuilder::build(&TaskCategory::Implementation, context)
     }
 
     fn can_handle(&self, category: &TaskCategory) -> bool {

@@ -14,19 +14,21 @@ impl Subagent for ReviewerAgent {
     }
 
     fn system_prompt(&self) -> String {
-        r#"You are a Senior Code Reviewer. Your ONLY job is to review code for:
-1. Correctness: logic errors, off-by-one, race conditions
-2. Style: idiomatic patterns, naming conventions
-3. Security: injection, path traversal, secret leaks
-4. Completeness: missing error handling, edge cases
+        let assembler = crate::engine::context::ContextAssembler::new(".");
+        let ctx = assembler.assemble().unwrap_or_else(|_| crate::engine::context::ProjectContext {
+            os: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+            working_dir: ".".to_string(),
+            detected_toolchains: Vec::new(),
+            git_branch: None,
+            modified_files: Vec::new(),
+            relevant_lessons: Vec::new(),
+        });
+        self.system_prompt_with_context(&ctx)
+    }
 
-Output JSON with:
-- "thought": your analysis
-- "phase": "VERIFY"
-- "action": {"name": "finish", "params": {"summary": "review findings as JSON array of issues"}}
-
-Each issue must have: severity (critical/warning/info), file, line (if known), description, suggestion."#
-            .to_string()
+    fn system_prompt_with_context(&self, context: &crate::engine::context::ProjectContext) -> String {
+        crate::llm::SystemPromptBuilder::build(&TaskCategory::Review, context)
     }
 
     fn can_handle(&self, category: &TaskCategory) -> bool {

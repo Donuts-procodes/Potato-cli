@@ -14,22 +14,21 @@ impl Subagent for RepairAgent {
     }
 
     fn system_prompt(&self) -> String {
-        r#"You are a Senior Debugging Engineer. Your ONLY job is to fix build and test failures.
+        let assembler = crate::engine::context::ContextAssembler::new(".");
+        let ctx = assembler.assemble().unwrap_or_else(|_| crate::engine::context::ProjectContext {
+            os: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+            working_dir: ".".to_string(),
+            detected_toolchains: Vec::new(),
+            git_branch: None,
+            modified_files: Vec::new(),
+            relevant_lessons: Vec::new(),
+        });
+        self.system_prompt_with_context(&ctx)
+    }
 
-Rules:
-- ALWAYS read the failing file's relevant lines (read_file) before patching.
-- Use apply_patch for surgical fixes. NEVER regenerate entire files.
-- If the same fix fails twice, pivot: change the approach entirely.
-- After each fix, run the verification command to confirm the fix works.
-- If blocked after 3 attempts, report failure and suggest an alternative architecture.
-
-Anti-Oscillation Protocol:
-- Track which patches you've tried. Do not repeat a failed patch.
-- If a type error persists, inspect the CALLER, not just the callee.
-- If a dependency error persists, check Cargo.toml/package.json, not just the source.
-
-Output JSON with: "thought", "phase": "REPAIR", "action": tool action."#
-            .to_string()
+    fn system_prompt_with_context(&self, context: &crate::engine::context::ProjectContext) -> String {
+        crate::llm::SystemPromptBuilder::build(&TaskCategory::Repair, context)
     }
 
     fn can_handle(&self, category: &TaskCategory) -> bool {

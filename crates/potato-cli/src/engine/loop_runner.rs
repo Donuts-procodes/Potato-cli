@@ -218,6 +218,23 @@ impl LoopRunner {
                 _ => (None, None),
             };
 
+            // Pre-write AST validation check
+            if let Action::WriteFile { ref path, ref content } = agent_response.action {
+                if let Err(ast_err) = crate::tools::AstValidator::validate(path, content) {
+                    println!("{} {}", "  ⚠️ AST SYNTAX GATEKEEPER DENIAL:".bold().yellow(), ast_err);
+                    messages.push(ChatMessage {
+                        role: "assistant".to_string(),
+                        content: serde_json::to_string(&agent_response)?,
+                    });
+                    messages.push(ChatMessage {
+                        role: "user".to_string(),
+                        content: format!("PRE-WRITE AST SYNTAX ERROR:\nFile: {}\nError: {}\nYou must fix syntax errors before writing.", path, ast_err),
+                    });
+                    consecutive_failures += 1;
+                    continue;
+                }
+            }
+
             // Execute the action
             let result = executor::dispatch(&agent_response.action);
 
@@ -332,14 +349,10 @@ impl LoopRunner {
                 ),
             });
 
-            // Context window management: trim oldest non-system messages if too many
+            // Context window management: compress historical context when exceeding limit
             if messages.len() > 80 {
-                let system_msg = messages[0].clone();
-                let keep_count = 40;
-                let drain_end = messages.len() - keep_count;
-                messages.drain(1..drain_end);
-                messages[0] = system_msg;
-                info!("Trimmed context window to {} messages", messages.len());
+                messages = crate::engine::context::ContextCompressor::compress(&messages, 40);
+                info!("Compressed context window to {} messages", messages.len());
             }
         }
 

@@ -1,3 +1,4 @@
+pub mod context;
 pub mod cost_tracker;
 pub mod executor;
 pub mod hooks;
@@ -9,6 +10,7 @@ pub mod session;
 pub mod signal;
 pub mod tool_policy;
 
+pub use context::{ContextAssembler, ContextCompressor, ProjectContext};
 pub use cost_tracker::CostTracker;
 pub use hooks::{HookEntry, HookManager, HookType};
 pub use loop_runner::LoopRunner;
