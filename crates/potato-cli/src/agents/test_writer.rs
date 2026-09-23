@@ -64,6 +64,7 @@ Output JSON with: "thought", "phase": "IMPLEMENTATION", "action": tool action."#
             modified_files: Vec::new(),
             issues: Vec::new(),
             messages,
+            token_usage: None,
         })
     }
 }

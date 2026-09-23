@@ -19,9 +19,13 @@ pub struct SubagentTask {
     pub relevant_files: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+/// All supported task categories for agent routing.
+/// Specialist categories map to domain-specific agents.
+/// Meta categories map to agents that operate on the agent system itself.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskCategory {
+    // --- Core specialist categories ---
     Architecture,
     Implementation,
     Review,
@@ -29,6 +33,20 @@ pub enum TaskCategory {
     Repair,
     Security,
     Documentation,
+    // --- Extended specialist categories ---
+    Refactoring,
+    Performance,
+    Migration,
+    Dependencies,
+    DevOps,
+    Database,
+    ApiDesign,
+    // --- Meta categories ---
+    Planning,
+    Retrospective,
+    PromptOptimization,
+    CostOptimization,
+    Orchestration,
 }
 
 /// Result returned by a subagent after completing its task.
@@ -46,6 +64,8 @@ pub struct SubagentResult {
     pub issues: Vec<Issue>,
     /// Raw messages from the subagent's conversation (for context passing)
     pub messages: Vec<ChatMessage>,
+    /// Token usage for this subagent run
+    pub token_usage: Option<TokenUsage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,6 +85,13 @@ pub enum IssueSeverity {
     Info,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct TokenUsage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+}
+
 /// Trait that all subagents implement.
 /// Each subagent has its own system prompt, routing logic, and execution strategy.
 #[async_trait]
@@ -81,6 +108,12 @@ pub trait Subagent: Send + Sync {
     /// Maximum number of ReAct turns this subagent is allowed.
     fn max_turns(&self) -> usize {
         50
+    }
+
+    /// Optional model override for this subagent.
+    /// Returns `None` to use the default model.
+    fn model_override(&self) -> Option<&str> {
+        None
     }
 
     /// Execute the task using the provided LLM client.

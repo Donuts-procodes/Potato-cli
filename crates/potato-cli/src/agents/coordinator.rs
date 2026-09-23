@@ -4,9 +4,22 @@ use tracing::{info, warn};
 
 use crate::agents::traits::{Subagent, SubagentResult, SubagentTask, TaskCategory};
 use crate::agents::{
+    api_designer::ApiDesignerAgent,
     architect::ArchitectAgent,
+    cost_optimizer::CostOptimizerAgent,
+    database::DatabaseAgent,
+    dependency_auditor::DependencyAuditorAgent,
+    devops::DevOpsAgent,
+    doc_generator::DocGeneratorAgent,
     implementer::ImplementerAgent,
+    migration::MigrationAgent,
+    orchestrator::OrchestratorAgent,
+    performance_profiler::PerformanceProfilerAgent,
+    planner::PlannerAgent,
+    prompt_optimizer::PromptOptimizerAgent,
+    refactorer::RefactorerAgent,
     repair::RepairAgent,
+    retrospective::RetrospectiveAgent,
     reviewer::ReviewerAgent,
     security::SecurityAuditorAgent,
     test_writer::TestWriterAgent,
@@ -14,30 +27,58 @@ use crate::agents::{
 use crate::llm::LlmClient;
 
 /// The Coordinator is the root orchestrator that decomposes objectives into
-/// subtasks and routes them to the appropriate specialist subagent.
+/// subtasks and routes them to the appropriate specialist or meta subagent.
 pub struct Coordinator {
     agents: Vec<Box<dyn Subagent>>,
 }
 
+impl Default for Coordinator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Coordinator {
-    /// Creates a coordinator with all built-in specialist subagents.
+    /// Creates a coordinator with all 19 built-in specialist and meta subagents.
     pub fn new() -> Self {
         let agents: Vec<Box<dyn Subagent>> = vec![
+            // Core specialists
             Box::new(ArchitectAgent),
             Box::new(ImplementerAgent),
             Box::new(ReviewerAgent),
             Box::new(TestWriterAgent),
             Box::new(RepairAgent),
             Box::new(SecurityAuditorAgent),
+            Box::new(DocGeneratorAgent),
+            // Extended specialists
+            Box::new(RefactorerAgent),
+            Box::new(PerformanceProfilerAgent),
+            Box::new(MigrationAgent),
+            Box::new(DependencyAuditorAgent),
+            Box::new(DevOpsAgent),
+            Box::new(DatabaseAgent),
+            Box::new(ApiDesignerAgent),
+            // Meta agents
+            Box::new(PlannerAgent),
+            Box::new(RetrospectiveAgent),
+            Box::new(PromptOptimizerAgent),
+            Box::new(CostOptimizerAgent),
+            Box::new(OrchestratorAgent),
         ];
 
         info!(
             agent_count = agents.len(),
             agents = ?agents.iter().map(|a| a.name()).collect::<Vec<_>>(),
-            "Coordinator initialized with specialist subagents"
+            "Coordinator initialized with 19 built-in subagents"
         );
 
         Self { agents }
+    }
+
+    /// Registers a custom or dynamically configured subagent.
+    pub fn register(&mut self, agent: Box<dyn Subagent>) {
+        info!(agent_name = agent.name(), "Registered additional subagent");
+        self.agents.push(agent);
     }
 
     /// Finds the first subagent capable of handling the given task category.

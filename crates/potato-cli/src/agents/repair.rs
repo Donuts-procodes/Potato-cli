@@ -68,6 +68,7 @@ Output JSON with: "thought", "phase": "REPAIR", "action": tool action."#
             modified_files: task.relevant_files.clone(),
             issues: Vec::new(),
             messages,
+            token_usage: None,
         })
     }
 }

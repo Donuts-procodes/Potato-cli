@@ -81,6 +81,11 @@ impl LlmClient {
     }
 
     pub async fn send_turn(&self, messages: &[ChatMessage]) -> Result<AgentTurnResponse> {
+        let (turn, _) = self.send_turn_with_usage(messages).await?;
+        Ok(turn)
+    }
+
+    pub async fn send_turn_with_usage(&self, messages: &[ChatMessage]) -> Result<(AgentTurnResponse, Usage)> {
         let endpoint = format!("{}/chat/completions", self.api_base.trim_end_matches('/'));
 
         let mut headers = HeaderMap::new();
@@ -150,7 +155,7 @@ impl LlmClient {
                         let turn: AgentTurnResponse = serde_json::from_str(&cleaned_json)
                             .with_context(|| format!("Failed to parse AgentTurnResponse JSON: {}", cleaned_json))?;
 
-                        return Ok(turn);
+                        return Ok((turn, usage));
                     } else {
                         let err_text = response.text().await.unwrap_or_default();
                         error!(

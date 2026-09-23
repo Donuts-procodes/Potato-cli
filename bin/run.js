@@ -23,21 +23,69 @@ if (!target) {
   process.exit(1);
 }
 
-let binaryPath;
-try {
-  binaryPath = require.resolve(target);
-} catch (_resolveErr) {
-  // Fallback for local monorepo / development builds
-  const binaryName = process.platform === "win32" ? "potato.exe" : "potato";
-  const localFallback = path.join(__dirname, "..", "npm", key, "bin", binaryName);
+function resolveBinary() {
+  // Strategy 1: Standard node require.resolve (works for npm, yarn, bun)
+  try {
+    return require.resolve(target);
+  } catch (_) {
+    // continue to next strategy
+  }
+
+  // Strategy 2: pnpm hoisted or node_modules relative path
+  const packageName = target.split("/bin/")[0];
+  const binName = target.split("/bin/")[1];
+  const searchRoots = [
+    path.join(__dirname, "..", "node_modules", packageName, "bin", binName),
+    path.join(__dirname, "..", "..", packageName, "bin", binName),
+    path.join(__dirname, "..", "..", "..", "node_modules", packageName, "bin", binName),
+  ];
+
+  for (const candidate of searchRoots) {
+    if (fs.existsSync(candidate)) {
+      return candidate;
+    }
+  }
+
+  // Strategy 3: Monorepo / local development build
+  const localFallback = path.join(__dirname, "..", "npm", key, "bin", binName);
   if (fs.existsSync(localFallback)) {
-    binaryPath = localFallback;
-  } else {
-    console.error(`Error: Could not resolve native binary for platform "${key}".`);
-    console.error(`Expected package: ${target}`);
-    console.error(`Local fallback checked: ${localFallback}`);
-    console.error(`Ensure the platform package is installed (npm install).`);
-    process.exit(1);
+    return localFallback;
+  }
+
+  // Strategy 4: Cargo target directory (during cargo development)
+  const cargoTarget = path.join(
+    __dirname,
+    "..",
+    "target",
+    "release",
+    process.platform === "win32" ? "potato.exe" : "potato"
+  );
+  if (fs.existsSync(cargoTarget)) {
+    return cargoTarget;
+  }
+
+  console.error(`Error: Could not resolve native binary for platform "${key}".`);
+  console.error(`Expected package: ${target}`);
+  console.error(`\nIf you installed via npm, bun, yarn, or pnpm, ensure optionalDependencies were not skipped.`);
+  console.error(`To reinstall:`);
+  console.error(`  npm install -g potato-cli`);
+  console.error(`  bun add -g potato-cli`);
+  console.error(`  pnpm add -g potato-cli`);
+  console.error(`  yarn global add potato-cli`);
+  process.exit(1);
+}
+
+const binaryPath = resolveBinary();
+
+// Ensure binary is executable on Unix-like systems (npm/yarn extraction sometimes drops +x)
+if (process.platform !== "win32") {
+  try {
+    const stats = fs.statSync(binaryPath);
+    if ((stats.mode & 0o111) === 0) {
+      fs.chmodSync(binaryPath, stats.mode | 0o755);
+    }
+  } catch (_) {
+    // ignore chmod failures if permission denied
   }
 }
 

@@ -3,8 +3,12 @@ use clap::Parser;
 use colored::Colorize;
 use tracing_subscriber::EnvFilter;
 
+use potato_cli::agents::Coordinator;
 use potato_cli::config::PotatoConfig;
-use potato_cli::engine::{install_signal_handler, LoopRunner};
+use potato_cli::engine::{
+    cost_tracker::CostTracker, hooks::HookManager, install_signal_handler,
+    tool_policy::ToolPolicy, LoopRunner,
+};
 use potato_cli::llm::LlmClient;
 
 /// 🥔 Potato — Autonomous Super Loop Agent Engine
@@ -16,11 +20,19 @@ use potato_cli::llm::LlmClient;
 struct Cli {
     /// The software objective to accomplish (e.g., "Build a REST API in Go with SQLite")
     #[arg(index = 1)]
-    objective: String,
+    objective: Option<String>,
 
     /// Maximum number of ReAct turns before aborting
     #[arg(long, env = "POTATO_MAX_TURNS")]
     max_turns: Option<usize>,
+
+    /// Override max cost budget in USD (e.g. --budget 5.0)
+    #[arg(long)]
+    budget: Option<f64>,
+
+    /// List all registered built-in and custom subagents
+    #[arg(long)]
+    list_agents: bool,
 
     /// Verbosity level: 0=warn, 1=info, 2=debug, 3=trace
     #[arg(short, long, action = clap::ArgAction::Count, default_value_t = 0)]
@@ -56,19 +68,58 @@ async fn main() -> Result<()> {
     // Load layered config
     let config = PotatoConfig::load()?;
 
+    // Handle --list-agents
+    if cli.list_agents {
+        println!("{}", BANNER.bold().yellow());
+        println!("{}", "🤖 REGISTERED SUBAGENTS:".bold().cyan());
+        println!("{}", "─".repeat(50).dimmed());
+
+        let coordinator = Coordinator::new();
+        for (i, name) in coordinator.agent_names().iter().enumerate() {
+            println!("  {:2}. {}", (i + 1).to_string().dimmed(), name.bold().green());
+        }
+
+        if !config.custom_agents.is_empty() {
+            println!("\n{}", "📦 CUSTOM TOML AGENTS:".bold().magenta());
+            for custom in &config.custom_agents {
+                println!(
+                    "  • {} ({}) — model: {}",
+                    custom.name.bold(),
+                    custom.category.cyan(),
+                    custom.model.as_deref().unwrap_or("default")
+                );
+            }
+        }
+        return Ok(());
+    }
+
+    let objective = match cli.objective {
+        Some(obj) if !obj.trim().is_empty() => obj,
+        _ => {
+            eprintln!("{}", "Error: Objective is required. Run 'potato --help' for usage or 'potato --list-agents' to view agents.".red());
+            std::process::exit(1);
+        }
+    };
+
     let max_turns = cli.max_turns.unwrap_or(config.agent.max_turns);
+    let max_budget = cli.budget.unwrap_or(config.cost.max_cost_usd);
 
     // Banner
     println!("{}", BANNER.bold().yellow());
     println!(
         "{} {}",
         "Objective:".bold().cyan(),
-        cli.objective.bold().white()
+        objective.bold().white()
     );
     println!(
         "{} {}",
         "Max turns:".bold().cyan(),
         max_turns.to_string().white()
+    );
+    println!(
+        "{} {}",
+        "Cost budget:".bold().cyan(),
+        format!("${:.2}", max_budget).white()
     );
     println!(
         "{} {}",
@@ -88,8 +139,19 @@ async fn main() -> Result<()> {
         )
     })?;
 
+    // Build cost tracker, tool policy, hook manager
+    let cost_tracker = CostTracker::new(max_budget, config.cost.warn_at_usd)
+        .with_pricing(config.cost.prompt_cost_per_million, config.cost.completion_cost_per_million);
+
+    let tool_policy = ToolPolicy::from_config(config.tools.blocked_commands, config.tools.agents);
+    let hook_manager = HookManager::from_config(&config.hooks);
+
     let client = LlmClient::new(config.llm.api_base, api_key, config.llm.model);
-    let runner = LoopRunner::new(client, cli.objective).with_max_turns(max_turns);
+    let runner = LoopRunner::new(client, objective)
+        .with_max_turns(max_turns)
+        .with_cost_tracker(cost_tracker)
+        .with_tool_policy(tool_policy)
+        .with_hook_manager(hook_manager);
 
     match runner.run().await {
         Ok(summary) => {
@@ -110,8 +172,8 @@ async fn main() -> Result<()> {
 
 const BANNER: &str = r#"
   ╔══════════════════════════════════════════════════╗
-  ║       🥔  P O T A T O   C L I  🥔              ║
+  ║       🥔  P O T A T O   C L I  🥔               ║
   ║     Autonomous Super Loop Agent Engine           ║
-  ║     7 Specialist Subagents • Anti-Oscillation    ║
+  ║     20 Specialist & Meta Subagents • Sandboxed   ║
   ╚══════════════════════════════════════════════════╝
 "#;

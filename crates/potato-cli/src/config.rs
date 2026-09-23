@@ -1,7 +1,11 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tracing::info;
+
+use crate::agents::CustomAgentDef;
+use crate::engine::tool_policy::AgentToolConfig;
 
 /// Top-level configuration for potato-cli.
 /// Loaded from (in priority order):
@@ -17,6 +21,12 @@ pub struct PotatoConfig {
     pub agent: AgentConfig,
     pub sandbox: SandboxConfig,
     pub session: SessionConfig,
+    pub cost: CostConfig,
+    pub tools: ToolsConfig,
+    pub hooks: HashMap<String, String>,
+    pub models: ModelsConfig,
+    #[serde(rename = "agents", default)]
+    pub custom_agents: Vec<CustomAgentDef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -69,6 +79,38 @@ pub struct SessionConfig {
     pub session_dir: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CostConfig {
+    /// Maximum total USD budget before hard abort
+    pub max_cost_usd: f64,
+    /// Threshold in USD to issue a warning in terminal
+    pub warn_at_usd: f64,
+    /// Pricing per 1M prompt tokens (default $2.50)
+    pub prompt_cost_per_million: f64,
+    /// Pricing per 1M completion tokens (default $10.00)
+    pub completion_cost_per_million: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
+pub struct ToolsConfig {
+    /// Shell commands blocked globally across all agents
+    pub blocked_commands: Vec<String>,
+    /// Per-agent tool restrictions
+    #[serde(flatten)]
+    pub agents: HashMap<String, AgentToolConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ModelsConfig {
+    /// Default model for all agents
+    pub default: String,
+    /// Per-agent model overrides (e.g. Reviewer = "gpt-4o-mini")
+    pub overrides: HashMap<String, String>,
+}
+
 // --- Defaults ---
 
 impl Default for PotatoConfig {
@@ -78,6 +120,11 @@ impl Default for PotatoConfig {
             agent: AgentConfig::default(),
             sandbox: SandboxConfig::default(),
             session: SessionConfig::default(),
+            cost: CostConfig::default(),
+            tools: ToolsConfig::default(),
+            hooks: HashMap::new(),
+            models: ModelsConfig::default(),
+            custom_agents: Vec::new(),
         }
     }
 }
@@ -121,6 +168,26 @@ impl Default for SessionConfig {
         Self {
             persist: false,
             session_dir: ".potato/sessions".to_string(),
+        }
+    }
+}
+
+impl Default for CostConfig {
+    fn default() -> Self {
+        Self {
+            max_cost_usd: 10.0,
+            warn_at_usd: 5.0,
+            prompt_cost_per_million: 2.50,
+            completion_cost_per_million: 10.00,
+        }
+    }
+}
+
+impl Default for ModelsConfig {
+    fn default() -> Self {
+        Self {
+            default: "gpt-4o".to_string(),
+            overrides: HashMap::new(),
         }
     }
 }
@@ -192,6 +259,27 @@ impl PotatoConfig {
         }
         if other.session.persist != SessionConfig::default().persist {
             self.session.persist = other.session.persist;
+        }
+        if other.cost.max_cost_usd != CostConfig::default().max_cost_usd {
+            self.cost.max_cost_usd = other.cost.max_cost_usd;
+        }
+        if other.cost.warn_at_usd != CostConfig::default().warn_at_usd {
+            self.cost.warn_at_usd = other.cost.warn_at_usd;
+        }
+        if !other.hooks.is_empty() {
+            self.hooks.extend(other.hooks);
+        }
+        if !other.models.overrides.is_empty() {
+            self.models.overrides.extend(other.models.overrides);
+        }
+        if !other.tools.blocked_commands.is_empty() {
+            self.tools.blocked_commands.extend(other.tools.blocked_commands);
+        }
+        if !other.tools.agents.is_empty() {
+            self.tools.agents.extend(other.tools.agents);
+        }
+        if !other.custom_agents.is_empty() {
+            self.custom_agents.extend(other.custom_agents);
         }
         self
     }

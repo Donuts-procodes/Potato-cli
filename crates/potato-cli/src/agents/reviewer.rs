@@ -68,6 +68,7 @@ Each issue must have: severity (critical/warning/info), file, line (if known), d
             modified_files: Vec::new(),
             issues,
             messages,
+            token_usage: None,
         })
     }
 }

@@ -2,9 +2,13 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use tracing::{info, warn};
 
+use crate::engine::cost_tracker::CostTracker;
 use crate::engine::executor;
+use crate::engine::hooks::{HookContext, HookManager, HookType};
 use crate::engine::signal::is_shutdown_requested;
+use crate::engine::tool_policy::ToolPolicy;
 use crate::llm::{build_system_prompt, ChatMessage, LlmClient};
+use crate::tools::diff_display::unified_diff;
 use crate::types::Action;
 
 const MAX_TURNS: usize = 200;
@@ -14,6 +18,9 @@ pub struct LoopRunner {
     client: LlmClient,
     objective: String,
     max_turns: usize,
+    cost_tracker: Option<CostTracker>,
+    tool_policy: Option<ToolPolicy>,
+    hook_manager: Option<HookManager>,
 }
 
 impl LoopRunner {
@@ -22,11 +29,29 @@ impl LoopRunner {
             client,
             objective,
             max_turns: MAX_TURNS,
+            cost_tracker: None,
+            tool_policy: None,
+            hook_manager: None,
         }
     }
 
     pub fn with_max_turns(mut self, turns: usize) -> Self {
         self.max_turns = turns;
+        self
+    }
+
+    pub fn with_cost_tracker(mut self, tracker: CostTracker) -> Self {
+        self.cost_tracker = Some(tracker);
+        self
+    }
+
+    pub fn with_tool_policy(mut self, policy: ToolPolicy) -> Self {
+        self.tool_policy = Some(policy);
+        self
+    }
+
+    pub fn with_hook_manager(mut self, hooks: HookManager) -> Self {
+        self.hook_manager = Some(hooks);
         self
     }
 
@@ -52,6 +77,13 @@ impl LoopRunner {
             // Graceful shutdown check
             if is_shutdown_requested() {
                 println!("\n{}", "🛑 Graceful shutdown — committing checkpoint...".bold().yellow());
+                if let Some(ref hooks) = self.hook_manager {
+                    let ctx = HookContext {
+                        turn_number: Some(turn),
+                        ..HookContext::empty()
+                    };
+                    hooks.run_hooks(&HookType::OnShutdown, &ctx);
+                }
                 let _ = crate::tools::git_tools::git_checkpoint(
                     &crate::types::GitAction::Commit,
                     Some("chore: graceful shutdown checkpoint"),
@@ -65,11 +97,20 @@ impl LoopRunner {
                 "━".repeat(50).dimmed()
             );
 
-            let agent_response = self
+            let (agent_response, usage) = self
                 .client
-                .send_turn(&messages)
+                .send_turn_with_usage(&messages)
                 .await
                 .with_context(|| format!("LLM call failed on turn {}", turn))?;
+
+            // Track cost and tokens
+            if let Some(ref tracker) = self.cost_tracker {
+                if let Err(exceeded) = tracker.record(usage.prompt_tokens, usage.completion_tokens) {
+                    println!("\n{}", format!("🛑 BUDGET EXCEEDED: {}", exceeded).bold().red());
+                    return Err(anyhow::anyhow!(exceeded));
+                }
+                println!("   {}", tracker.summary().dimmed());
+            }
 
             // Print thought
             println!(
@@ -93,6 +134,14 @@ impl LoopRunner {
                 println!("\n{}", "✅ AGENT COMPLETE".bold().green());
                 println!("{}", summary);
 
+                if let Some(ref hooks) = self.hook_manager {
+                    let ctx = HookContext {
+                        turn_number: Some(turn),
+                        ..HookContext::empty()
+                    };
+                    hooks.run_hooks(&HookType::OnComplete, &ctx);
+                }
+
                 messages.push(ChatMessage {
                     role: "assistant".to_string(),
                     content: serde_json::to_string(&agent_response)?,
@@ -100,6 +149,74 @@ impl LoopRunner {
 
                 return Ok(summary.clone());
             }
+
+            // Check ToolPolicy permissions
+            let action_name = action_variant_name(&agent_response.action);
+            if let Some(ref policy) = self.tool_policy {
+                if !policy.is_action_allowed("default", action_name) {
+                    let denial = policy.denial_message("default", action_name);
+                    println!("{} {}", "  ⛔ BLOCKED:".bold().red(), denial);
+                    messages.push(ChatMessage {
+                        role: "assistant".to_string(),
+                        content: serde_json::to_string(&agent_response)?,
+                    });
+                    messages.push(ChatMessage {
+                        role: "user".to_string(),
+                        content: format!("TOOL RESULT:\nexit_code: 1\nstdout:\n\nstderr:\n{}", denial),
+                    });
+                    consecutive_failures += 1;
+                    continue;
+                }
+
+                if let Action::ExecCommand { ref command, .. } = agent_response.action {
+                    if !policy.is_command_allowed("default", command) {
+                        let denial = policy.denial_message("default", command);
+                        println!("{} {}", "  ⛔ BLOCKED:".bold().red(), denial);
+                        messages.push(ChatMessage {
+                            role: "assistant".to_string(),
+                            content: serde_json::to_string(&agent_response)?,
+                        });
+                        messages.push(ChatMessage {
+                            role: "user".to_string(),
+                            content: format!("TOOL RESULT:\nexit_code: 1\nstdout:\n\nstderr:\n{}", denial),
+                        });
+                        consecutive_failures += 1;
+                        continue;
+                    }
+                }
+            }
+
+            // Capture pre-action state for diff display & hooks
+            let (old_content, target_path) = match &agent_response.action {
+                Action::WriteFile { path, .. } | Action::ApplyPatch { path, .. } => {
+                    let old = std::fs::read_to_string(path).unwrap_or_default();
+                    if let Some(ref hooks) = self.hook_manager {
+                        let ctx = HookContext {
+                            file_path: Some(path.clone()),
+                            action_type: Some(action_name.to_string()),
+                            turn_number: Some(turn),
+                            agent_name: Some("default".to_string()),
+                            exit_code: None,
+                        };
+                        hooks.run_hooks(&HookType::PreWrite, &ctx);
+                    }
+                    (Some(old), Some(path.clone()))
+                }
+                Action::ExecCommand { command, .. } => {
+                    if let Some(ref hooks) = self.hook_manager {
+                        let ctx = HookContext {
+                            action_type: Some(format!("exec: {}", command)),
+                            turn_number: Some(turn),
+                            agent_name: Some("default".to_string()),
+                            file_path: None,
+                            exit_code: None,
+                        };
+                        hooks.run_hooks(&HookType::PreExec, &ctx);
+                    }
+                    (None, None)
+                }
+                _ => (None, None),
+            };
 
             // Execute the action
             let result = executor::dispatch(&agent_response.action);
@@ -111,6 +228,40 @@ impl LoopRunner {
                     "  ✓".green(),
                     truncate_display(&result.stdout, 300)
                 );
+
+                // Show unified diff for file modifications
+                if let (Some(ref old), Some(ref path)) = (old_content, target_path) {
+                    let new = std::fs::read_to_string(path).unwrap_or_default();
+                    let diff = unified_diff(path, old, &new);
+                    if !diff.is_empty() {
+                        println!("\n{}\n", diff);
+                    }
+                    if let Some(ref hooks) = self.hook_manager {
+                        let ctx = HookContext {
+                            file_path: Some(path.clone()),
+                            action_type: Some(action_name.to_string()),
+                            exit_code: Some(0),
+                            turn_number: Some(turn),
+                            agent_name: Some("default".to_string()),
+                        };
+                        hooks.run_hooks(&HookType::PostWrite, &ctx);
+                    }
+                }
+
+                // Post-commit hook
+                if let Action::GitCheckpoint { .. } = &agent_response.action {
+                    if let Some(ref hooks) = self.hook_manager {
+                        let ctx = HookContext {
+                            action_type: Some("git_checkpoint".to_string()),
+                            exit_code: Some(0),
+                            turn_number: Some(turn),
+                            agent_name: Some("default".to_string()),
+                            file_path: None,
+                        };
+                        hooks.run_hooks(&HookType::PostCommit, &ctx);
+                    }
+                }
+
                 consecutive_failures = 0;
             } else {
                 println!(
@@ -137,6 +288,18 @@ impl LoopRunner {
                     .bold()
                     .red()
                 );
+
+                if let Some(ref hooks) = self.hook_manager {
+                    let ctx = HookContext {
+                        turn_number: Some(turn),
+                        exit_code: Some(result.exit_code),
+                        agent_name: Some("default".to_string()),
+                        file_path: None,
+                        action_type: None,
+                    };
+                    hooks.run_hooks(&HookType::OnFailure, &ctx);
+                }
+
                 consecutive_failures = 0;
 
                 messages.push(ChatMessage {
@@ -217,5 +380,17 @@ fn action_summary(action: &Action) -> String {
             format!("git_checkpoint({:?}, {:?})", action, message)
         }
         Action::Finish { .. } => "finish()".to_string(),
+    }
+}
+
+fn action_variant_name(action: &Action) -> &'static str {
+    match action {
+        Action::ReadFile { .. } => "read_file",
+        Action::WriteFile { .. } => "write_file",
+        Action::ApplyPatch { .. } => "apply_patch",
+        Action::ListDir { .. } => "list_dir",
+        Action::ExecCommand { .. } => "exec_command",
+        Action::GitCheckpoint { .. } => "git_checkpoint",
+        Action::Finish { .. } => "finish",
     }
 }

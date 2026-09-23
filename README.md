@@ -2,65 +2,161 @@
 
 **Autonomous Super Loop Agent Engine** — a native Rust CLI that drives an LLM through a fully autonomous ReAct loop to architect, scaffold, implement, and verify software projects on your local filesystem.
 
-## Quick Start
+Featuring **20 built-in specialist & meta subagents**, soft-jailed sandboxing, token cost guards, lifecycle hooks, and cross-platform native distribution across **npm, bun, yarn, pnpm, and Docker**.
+
+---
+
+## ⚡ Quick Start
+
+### Via Package Managers (Zero-Install Runner)
 
 ```bash
-# Via npx (no install required)
+# npm / npx
 npx potato-cli "Build a REST API in Go with SQLite"
 
-# Or install globally
+# Bun / bunx
+bunx potato-cli "Build an Axum microservice in Rust"
+
+# pnpm dlx
+pnpm dlx potato-cli "Build a fullstack Next.js dashboard"
+
+# Yarn dlx
+yarn dlx potato-cli "Create an Express.js server with JWT auth"
+```
+
+### Global Installation
+
+```bash
 npm install -g potato-cli
+# or: bun add -g potato-cli
+# or: pnpm add -g potato-cli
+# or: yarn global add potato-cli
+
 potato "Build a rate limiter microservice in Rust"
 ```
 
-## Requirements
-
-- **Node.js ≥ 18** (for npx/npm distribution)
-- **An LLM API key** — set one of:
-  - `OPENAI_API_KEY` (default, uses `https://api.openai.com/v1`)
-  - `POTATO_API_KEY` + `POTATO_API_BASE` (any OpenAI-compatible endpoint)
-
-## Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `OPENAI_API_KEY` | — | API key for OpenAI or compatible provider |
-| `POTATO_API_KEY` | — | Alternative API key env var |
-| `OPENAI_BASE_URL` | `https://api.openai.com/v1` | Base URL for the LLM API |
-| `POTATO_API_BASE` | — | Alternative base URL env var |
-| `POTATO_MODEL` | `gpt-4o` | Model identifier |
-| `POTATO_MAX_TURNS` | `200` | Maximum ReAct turns before abort |
-
-## Usage
+### Via Docker
 
 ```bash
-# Basic usage
-potato "Build a CLI calculator in Python with pytest"
+# Pull or build the image
+docker build -t potato-cli .
 
-# With verbose logging
-potato -vv "Create an Express.js REST API with JWT auth"
-
-# Custom turn limit
-potato --max-turns 50 "Add rate limiting to the existing server"
+# Run inside an isolated container with volume mount
+docker run --rm -it \
+  -e OPENAI_API_KEY="sk-..." \
+  -v $(pwd)/workspace:/workspace \
+  potato-cli "Build an authentication service in Python"
 ```
 
-## How It Works
+---
 
-Potato runs a **Super Loop** that autonomously:
+## 🤖 Built-in Subagents (20)
 
-1. **SPECIFICATION** — Analyzes your objective, writes `SPEC.md` and `ROADMAP.json`
-2. **BOOTSTRAP** — Initializes the project environment and dependencies
-3. **IMPLEMENTATION** — Writes code file-by-file in dependency order
-4. **VERIFY & REPAIR** — Runs the build/test suite, surgically patches failures
+Run `potato --list-agents` to view all active agents.
 
-### Anti-Oscillation Guards
+### Core Specialists
+| Agent | Category | Role |
+|---|---|---|
+| **Architect** | `architecture` | Generates `SPEC.md`, system topology, and `ROADMAP.json` |
+| **Implementer** | `implementation` | Writes idiomatic, production-grade code module-by-module |
+| **Reviewer** | `review` | Performs AST & architectural code reviews |
+| **TestWriter** | `testing` | Writes comprehensive unit, integration, and E2E test suites |
+| **Repair** | `repair` | Diagnoses compiler errors/test failures and executes surgical patches |
+| **SecurityAuditor** | `security` | Audits code for OWASP Top 10 vulnerabilities, injection, and auth flaws |
+| **DocGenerator** | `documentation` | Generates README, API specs, and inline code documentation |
 
-- **Surgical patching** — never regenerates entire files for small fixes
-- **2-Strike Strategy Shift** — pivots approach after 2 identical failures
-- **Git Checkpointing** — auto-commits on green, rolls back after 3 failed cycles
-- **Context Window Management** — trims conversation history to stay within limits
+### Extended Specialists
+| Agent | Category | Role |
+|---|---|---|
+| **Refactorer** | `refactoring` | Eliminates code smells, reduces cyclomatic complexity, enforces DRY |
+| **PerformanceProfiler** | `performance` | Benchmarks hot paths, detects memory allocations, suggests optimizations |
+| **Migration** | `migration` | Ports legacy systems across languages/frameworks |
+| **DependencyAuditor** | `dependencies` | Audits manifests for known CVEs, license conflicts, and bloat |
+| **DevOps** | `devops` | Scaffolds Dockerfiles, GitHub Actions CI/CD workflows, Terraform |
+| **Database** | `database` | Generates SQL schemas, migrations, seeders, and query indexes |
+| **APIDesigner** | `api_design` | Designs OpenAPI/Swagger contracts and route architectures |
 
-## Architecture
+### Meta Agents
+| Agent | Category | Role |
+|---|---|---|
+| **Planner** | `planning` | Decomposes complex multi-system objectives into task DAGs |
+| **Retrospective** | `retrospective` | Analyzes execution sessions to output lessons and performance reports |
+| **PromptOptimizer** | `prompt_optimization` | Refines and tunes agent instructions based on outcome success |
+| **CostOptimizer** | `cost_optimization` | Minimizes token usage and analyzes cost efficiency across turns |
+| **Orchestrator** | `orchestration` | Dynamically routes tasks through agent graphs |
+
+---
+
+## 🛠️ CLI Options
+
+```
+Usage: potato [OPTIONS] [OBJECTIVE]
+
+Arguments:
+  [OBJECTIVE]  Natural language objective (e.g. "Build a CLI in Rust")
+
+Options:
+      --max-turns <MAX_TURNS>  Max ReAct turns before abort [default: 200]
+      --budget <BUDGET>        Max cost budget in USD (e.g. --budget 5.0)
+      --list-agents            List all built-in and custom TOML subagents
+      --resume <RESUME>        Resume a checkpointed session by ID
+  -v, --verbose...             Verbosity level (-v: info, -vv: debug, -vvv: trace)
+  -h, --help                   Print help information
+  -V, --version                Print version
+```
+
+---
+
+## ⚙️ Configuration (`potato.toml`)
+
+Potato automatically loads configuration layered from `./potato.toml`, `~/.config/potato/config.toml`, and environment variables:
+
+```toml
+# potato.toml
+
+[llm]
+api_key = "sk-..."
+api_base = "https://api.openai.com/v1"
+model = "gpt-4o"
+temperature = 0.1
+timeout_seconds = 180
+
+[cost]
+max_cost_usd = 5.00
+warn_at_usd = 3.00
+
+[tools]
+blocked_commands = ["rm -rf /", "format C:", "mkfs"]
+
+[tools.Reviewer]
+allowed_actions = ["read_file", "list_dir", "finish"]
+
+[hooks]
+post_write = ".potato/hooks/lint.sh"
+post_commit = ".potato/hooks/notify.sh"
+on_complete = ".potato/hooks/report.sh"
+
+[[agents]]
+name = "StyleEnforcer"
+category = "review"
+max_turns = 10
+model = "gpt-4o-mini"
+system_prompt = "Verify all functions have documentation comments."
+```
+
+---
+
+## 🛡️ Anti-Oscillation & Safety Guards
+
+- **Unified Diff Display** — Displays instant colorized diffs on every file write or patch
+- **Path-Prefix Sandbox** — Soft jail preventing directory traversal (`../`) outside workspace
+- **Cost Guard & Token Budget** — Live tracking with `--budget` hard stops
+- **Graceful Shutdown** — Two-phase Ctrl+C signal handling auto-commits git checkpoints
+- **Anti-Oscillation Detection** — Detects repeated action failures and injects rollback hints
+
+---
+
+## 📦 Architecture
 
 ```
 potato-cli/
@@ -68,28 +164,18 @@ potato-cli/
 │   ├── main.rs              # CLI entrypoint (clap)
 │   ├── lib.rs               # Library root
 │   ├── types/               # Action, Phase, ExecutionResult schemas
-│   ├── llm/                 # LLM client (retry, logging) + system prompt
-│   ├── engine/              # Super loop orchestrator + action dispatcher
-│   └── tools/               # Filesystem, shell exec, git checkpoint tools
-├── bin/run.js               # NPM binary shim (zero-dep Node launcher)
-├── npm/                     # Platform-specific binary packages
-│   ├── darwin-arm64/
-│   ├── darwin-x64/
-│   ├── linux-x64/
-│   ├── linux-arm64/
-│   └── win32-x64/
-└── .github/workflows/       # CI: cross-compile + NPM publish
+│   ├── llm/                 # Client (retry, token tracking) + prompt builders
+│   ├── agents/              # 20 Specialist & Meta agents + TOML CustomAgent
+│   ├── engine/              # LoopRunner, CostTracker, ToolPolicy, Hooks, Sandbox
+│   └── tools/               # fs, exec, git, diff_display
+├── bin/run.js               # Multi-runtime JS shim (npm/bun/yarn/pnpm)
+├── Dockerfile               # Multi-stage production container
+├── npm/                     # Platform-specific packages (darwin, linux, win32)
+└── .github/workflows/       # Automated CI & cross-compilation release pipeline
 ```
 
-## Building from Source
+---
 
-```bash
-# Requires Rust toolchain
-cargo build --release -p potato-cli
-
-# Binary is at target/release/potato (or potato.exe on Windows)
-```
-
-## License
+## 📄 License
 
 MIT

@@ -1,0 +1,8 @@
+target/
+.git/
+node_modules/
+.potato/sessions/
+.env
+*.log
+npm/*/bin/*
+!npm/*/package.json

@@ -68,6 +68,7 @@ Rules:
             modified_files: vec!["SPEC.md".to_string(), "ROADMAP.json".to_string()],
             issues: Vec::new(),
             messages,
+            token_usage: None,
         })
     }
 }

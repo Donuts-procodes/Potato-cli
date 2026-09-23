@@ -74,6 +74,7 @@ Output your findings as a JSON array in the finish action's summary."#
             modified_files: Vec::new(),
             issues,
             messages,
+            token_usage: None,
         })
     }
 }
