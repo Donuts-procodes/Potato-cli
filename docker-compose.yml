@@ -1,0 +1,22 @@
+services:
+  potato:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: potato-cli:latest
+    container_name: potato-cli
+    volumes:
+      - .:/workspace
+      - potato-cache:/root/.cache
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - POTATO_LOG=${POTATO_LOG:-info}
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    entrypoint: ["potato"]
+
+volumes:
+  potato-cache:

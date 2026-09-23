@@ -35,17 +35,26 @@ npm install -g potato-cli
 potato "Build a rate limiter microservice in Rust"
 ```
 
-### Via Docker
+### Via Docker & Docker Compose
 
 ```bash
-# Pull or build the image
+# Build the production container (includes Rust, Node, Bun, Yarn, pnpm, Python 3, Git)
 docker build -t potato-cli .
 
-# Run inside an isolated container with volume mount
+# Run with interactive volume mount
 docker run --rm -it \
   -e OPENAI_API_KEY="sk-..." \
-  -v $(pwd)/workspace:/workspace \
+  -v "${PWD}:/workspace" \
   potato-cli "Build an authentication service in Python"
+
+# Or seamlessly via Docker Compose:
+export OPENAI_API_KEY="sk-..."
+docker compose run --rm potato "Build a REST API in Go"
+
+# Run built-in inspection commands in container:
+docker compose run --rm potato --list-agents
+docker compose run --rm potato audit
+docker compose run --rm potato spec "Real-time chat in WebSockets"
 ```
 
 ---
