@@ -3,7 +3,8 @@ use clap::Parser;
 use colored::Colorize;
 use tracing_subscriber::EnvFilter;
 
-use potato_cli::engine::LoopRunner;
+use potato_cli::config::PotatoConfig;
+use potato_cli::engine::{install_signal_handler, LoopRunner};
 use potato_cli::llm::LlmClient;
 
 /// 🥔 Potato — Autonomous Super Loop Agent Engine
@@ -18,12 +19,16 @@ struct Cli {
     objective: String,
 
     /// Maximum number of ReAct turns before aborting
-    #[arg(long, default_value_t = 200, env = "POTATO_MAX_TURNS")]
-    max_turns: usize,
+    #[arg(long, env = "POTATO_MAX_TURNS")]
+    max_turns: Option<usize>,
 
     /// Verbosity level: 0=warn, 1=info, 2=debug, 3=trace
     #[arg(short, long, action = clap::ArgAction::Count, default_value_t = 0)]
     verbose: u8,
+
+    /// Resume a previous session by ID
+    #[arg(long)]
+    resume: Option<String>,
 }
 
 #[tokio::main]
@@ -45,6 +50,14 @@ async fn main() -> Result<()> {
         .compact()
         .init();
 
+    // Install Ctrl+C handler
+    install_signal_handler()?;
+
+    // Load layered config
+    let config = PotatoConfig::load()?;
+
+    let max_turns = cli.max_turns.unwrap_or(config.agent.max_turns);
+
     // Banner
     println!("{}", BANNER.bold().yellow());
     println!(
@@ -55,12 +68,28 @@ async fn main() -> Result<()> {
     println!(
         "{} {}",
         "Max turns:".bold().cyan(),
-        cli.max_turns.to_string().white()
+        max_turns.to_string().white()
+    );
+    println!(
+        "{} {}",
+        "Model:".bold().cyan(),
+        config.llm.model.white()
+    );
+    println!(
+        "{} {}",
+        "Sandbox:".bold().cyan(),
+        if config.sandbox.enabled { "enabled".green() } else { "disabled".red() }
     );
     println!("{}", "─".repeat(60).dimmed());
 
-    let client = LlmClient::from_env()?;
-    let runner = LoopRunner::new(client, cli.objective).with_max_turns(cli.max_turns);
+    let api_key = config.llm.api_key.ok_or_else(|| {
+        anyhow::anyhow!(
+            "No API key found. Set OPENAI_API_KEY or POTATO_API_KEY, or add api_key to potato.toml"
+        )
+    })?;
+
+    let client = LlmClient::new(config.llm.api_base, api_key, config.llm.model);
+    let runner = LoopRunner::new(client, cli.objective).with_max_turns(max_turns);
 
     match runner.run().await {
         Ok(summary) => {
@@ -83,5 +112,6 @@ const BANNER: &str = r#"
   ╔══════════════════════════════════════════════════╗
   ║       🥔  P O T A T O   C L I  🥔              ║
   ║     Autonomous Super Loop Agent Engine           ║
+  ║     7 Specialist Subagents • Anti-Oscillation    ║
   ╚══════════════════════════════════════════════════╝
 "#;

@@ -3,6 +3,7 @@ use colored::Colorize;
 use tracing::{info, warn};
 
 use crate::engine::executor;
+use crate::engine::signal::is_shutdown_requested;
 use crate::llm::{build_system_prompt, ChatMessage, LlmClient};
 use crate::types::Action;
 
@@ -48,6 +49,16 @@ impl LoopRunner {
         let mut consecutive_failures: usize = 0;
 
         for turn in 1..=self.max_turns {
+            // Graceful shutdown check
+            if is_shutdown_requested() {
+                println!("\n{}", "🛑 Graceful shutdown — committing checkpoint...".bold().yellow());
+                let _ = crate::tools::git_tools::git_checkpoint(
+                    &crate::types::GitAction::Commit,
+                    Some("chore: graceful shutdown checkpoint"),
+                );
+                return Err(anyhow::anyhow!("Shutdown requested by user (Ctrl+C)"));
+            }
+
             println!(
                 "\n{} {}",
                 format!("━━━ Turn {}/{}", turn, self.max_turns).bold().cyan(),
