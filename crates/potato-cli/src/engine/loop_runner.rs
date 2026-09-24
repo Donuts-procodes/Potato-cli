@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use colored::Colorize;
 use tracing::{info, warn};
 
@@ -162,7 +162,33 @@ impl LoopRunner {
                 let res = self.client.send_turn_with_usage(&messages).await;
                 spinner.stop();
 
-                let (resp, usage) = res.with_context(|| format!("LLM call failed on turn {}", turn))?;
+                let (resp, usage) = match res {
+                    Ok(val) => val,
+                    Err(err) => {
+                        warn!(error = %err, turn, "Turn encountered buffering stall or network error");
+                        println!(
+                            "\n{} {}",
+                            "⚠️  LLM BUFFERING / STALL DETECTED:".bold().yellow(),
+                            err
+                        );
+                        println!("{}", "🔄 Auto-recovering: attempting retry in 2 seconds...".cyan());
+                        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+                        let mut retry_spinner = Spinner::start(format!("🕹️  RECOVERING TURN... [{}]", self.client.model()));
+                        let retry_res = self.client.send_turn_with_usage(&messages).await;
+                        retry_spinner.stop();
+
+                        match retry_res {
+                            Ok(recovered) => {
+                                println!("{}", "  ✓ Recovered successfully from buffering stall!".green().bold());
+                                recovered
+                            }
+                            Err(fatal) => {
+                                return Err(anyhow::anyhow!("Turn {} failed after recovery retry: {}", turn, fatal));
+                            }
+                        }
+                    }
+                };
 
                 if let Some(ref cache) = self.cache_manager {
                     let _ = cache.set(self.client.model(), &messages, &resp);

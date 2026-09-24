@@ -2,7 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::types::AgentTurnResponse;
 
@@ -56,7 +56,8 @@ impl LlmClient {
     pub fn new(api_base: String, api_key: String, model: String) -> Self {
         Self {
             client: reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(180))
+                .connect_timeout(std::time::Duration::from_secs(15))
+                .tcp_nodelay(true)
                 .build()
                 .expect("Failed to initialize reqwest client"),
             api_base,
@@ -109,23 +110,49 @@ impl LlmClient {
         };
 
         let max_retries = 3;
-        let mut backoff = std::time::Duration::from_millis(500);
+        let mut backoff = std::time::Duration::from_millis(800);
+        let request_timeout = std::time::Duration::from_secs(75);
 
         for attempt in 1..=max_retries {
             let start_time = Instant::now();
-            let res = self
+            let post_future = self
                 .client
                 .post(&endpoint)
                 .headers(headers.clone())
                 .json(&payload)
-                .send()
-                .await;
+                .send();
+
+            let res = tokio::time::timeout(request_timeout, post_future).await;
 
             match res {
-                Ok(response) => {
+                Ok(Ok(response)) => {
                     let status = response.status();
                     if status.is_success() {
-                        let body_text = response.text().await?;
+                        let body_future = response.text();
+                        let body_res = tokio::time::timeout(std::time::Duration::from_secs(30), body_future).await;
+
+                        let body_text = match body_res {
+                            Ok(Ok(text)) => text,
+                            Ok(Err(e)) => {
+                                error!(attempt, error = %e, "Failed reading LLM response body text");
+                                if attempt == max_retries {
+                                    return Err(anyhow!("Failed reading LLM response body: {}", e));
+                                }
+                                tokio::time::sleep(backoff).await;
+                                backoff *= 2;
+                                continue;
+                            }
+                            Err(_) => {
+                                warn!(attempt, "LLM response body stream stalled for >30s; retrying");
+                                if attempt == max_retries {
+                                    return Err(anyhow!("LLM response body stream stalled/buffered indefinitely"));
+                                }
+                                tokio::time::sleep(backoff).await;
+                                backoff *= 2;
+                                continue;
+                            }
+                        };
+
                         let completion: ChatCompletionResponse = serde_json::from_str(&body_text)
                             .with_context(|| format!("Failed to parse completion body: {}", body_text))?;
 
@@ -162,21 +189,46 @@ impl LlmClient {
                         return Ok((turn, usage));
                     } else {
                         let err_text = response.text().await.unwrap_or_default();
-                        error!(
+                        let is_retryable = status.as_u16() == 429
+                            || status.as_u16() == 502
+                            || status.as_u16() == 503
+                            || status.as_u16() == 504;
+
+                        warn!(
                             status = %status,
                             attempt,
+                            retryable = is_retryable,
                             error = %err_text,
-                            "LLM request returned error status"
+                            "LLM request returned non-success status"
                         );
-                        if attempt == max_retries {
-                            return Err(anyhow!("LLM request failed after {} attempts: {}", max_retries, err_text));
+
+                        if attempt == max_retries || !is_retryable {
+                            return Err(anyhow!(
+                                "LLM request failed (status {}): {}\nTip: Check API quota or run `/model` to switch models.",
+                                status,
+                                err_text
+                            ));
                         }
                     }
                 }
-                Err(err) => {
-                    error!(attempt, error = %err, "HTTP transport error during LLM request");
+                Ok(Err(err)) => {
+                    warn!(attempt, error = %err, "HTTP transport connection error during LLM request");
                     if attempt == max_retries {
-                        return Err(anyhow!("HTTP transport error: {}", err));
+                        return Err(anyhow!(
+                            "HTTP transport error ({} attempts): {}\nTip: Check network connectivity or proxy settings.",
+                            max_retries,
+                            err
+                        ));
+                    }
+                }
+                Err(_) => {
+                    warn!(attempt, max_retries, "LLM request stalled or hung in buffer for >75s; triggering retry");
+                    if attempt == max_retries {
+                        return Err(anyhow!(
+                            "LLM request timed out while buffering from provider ({} attempts x 75s).\n\
+                             The server is unresponsive. Check internet connection or switch to another model with `/model`.",
+                            max_retries
+                        ));
                     }
                 }
             }
@@ -185,7 +237,7 @@ impl LlmClient {
             backoff *= 2;
         }
 
-        Err(anyhow!("Exhausted retry attempts for LLM call"))
+        Err(anyhow!("Exhausted retry attempts for LLM call due to buffering or connection stalls"))
     }
 }
 

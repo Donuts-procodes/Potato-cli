@@ -37,6 +37,7 @@ impl Spinner {
                 ArcadeTheme::Pacman => PACMAN_FRAMES,
             };
 
+            let start_time = std::time::Instant::now();
             let mut i = 0;
             while running_clone.load(Ordering::Relaxed) {
                 let raw_frame = frames[i % frames.len()];
@@ -48,7 +49,18 @@ impl Spinner {
                     _ => raw_frame.green().bold(),
                 };
 
-                print!("\r  {} {} ", colored_frame, message.white());
+                let elapsed = start_time.elapsed().as_secs();
+                let status_suffix = if elapsed >= 45 {
+                    format!("({}s) [buffering... still working]", elapsed).red().bold()
+                } else if elapsed >= 15 {
+                    format!("({}s) [buffering...]", elapsed).yellow().bold()
+                } else if elapsed >= 4 {
+                    format!("({}s)", elapsed).dimmed()
+                } else {
+                    "".normal()
+                };
+
+                print!("\r  {} {} {} ", colored_frame, message.white(), status_suffix);
                 let _ = stdout().flush();
                 i += 1;
                 sleep(Duration::from_millis(90)).await;
