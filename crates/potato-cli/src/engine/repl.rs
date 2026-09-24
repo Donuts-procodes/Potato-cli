@@ -492,12 +492,40 @@ fn get_git_branch() -> Option<String> {
         })
 }
 
+fn get_target_config_path() -> std::path::PathBuf {
+    let local = Path::new("potato.toml");
+    if local.exists() {
+        if let Ok(file) = std::fs::OpenOptions::new().write(true).open(local) {
+            drop(file);
+            return local.to_path_buf();
+        }
+    }
+
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let cwd_str = cwd.to_string_lossy().to_lowercase();
+    let is_system_dir = cwd_str.contains("system32") || cwd_str.contains("windows");
+
+    if !is_system_dir {
+        if std::fs::write("potato.toml.tmp", "# test\n").is_ok() {
+            let _ = std::fs::remove_file("potato.toml.tmp");
+            return local.to_path_buf();
+        }
+    }
+
+    if let Some(global_dir) = dirs::config_dir() {
+        let potato_dir = global_dir.join("potato");
+        let _ = std::fs::create_dir_all(&potato_dir);
+        return potato_dir.join("config.toml");
+    }
+
+    local.to_path_buf()
+}
+
 fn save_api_key_to_config(api_key: &str, model: &str) -> Result<()> {
-    let path = Path::new("potato.toml");
+    let path = get_target_config_path();
     let content = if path.exists() {
-        let existing = std::fs::read_to_string(path)?;
+        let existing = std::fs::read_to_string(&path)?;
         if existing.contains("api_key =") {
-            // Replace existing api_key line
             let mut lines = Vec::new();
             for line in existing.lines() {
                 if line.trim_start().starts_with("api_key =") {
@@ -518,17 +546,41 @@ fn save_api_key_to_config(api_key: &str, model: &str) -> Result<()> {
             api_key, model
         )
     };
-    std::fs::write(path, content)?;
+
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    if let Err(e) = std::fs::write(&path, &content) {
+        if let Some(global_dir) = dirs::config_dir() {
+            let global_path = global_dir.join("potato").join("config.toml");
+            let _ = std::fs::create_dir_all(global_dir.join("potato"));
+            std::fs::write(&global_path, content)?;
+            return Ok(());
+        }
+        return Err(e.into());
+    }
     Ok(())
 }
 
 fn save_ollama_config(api_base: &str, model: &str) -> Result<()> {
-    let path = Path::new("potato.toml");
+    let path = get_target_config_path();
     let content = format!(
         "# Potato CLI Configuration (Local Ollama)\n\n[llm]\napi_base = \"{}\"\napi_key = \"ollama\"\nmodel = \"{}\"\ntemperature = 0.1\n\n[cost]\nmax_cost_usd = 0.00\n",
         api_base, model
     );
-    std::fs::write(path, content)?;
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Err(e) = std::fs::write(&path, &content) {
+        if let Some(global_dir) = dirs::config_dir() {
+            let global_path = global_dir.join("potato").join("config.toml");
+            let _ = std::fs::create_dir_all(global_dir.join("potato"));
+            std::fs::write(&global_path, content)?;
+            return Ok(());
+        }
+        return Err(e.into());
+    }
     Ok(())
 }
 
