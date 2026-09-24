@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use tracing::{info, warn};
 
+use crate::engine::arcade::{format_game_over, format_stage_clear, format_stage_header};
 use crate::engine::brain::Brain;
 use crate::engine::cache::CacheManager;
 use crate::engine::cost_tracker::CostTracker;
@@ -142,13 +143,11 @@ impl LoopRunner {
                 return Err(anyhow::anyhow!("Shutdown requested by user (Ctrl+C)"));
             }
 
-            println!(
-                "\n{} {}",
-                format!("━━━ Turn {}/{}", turn, self.max_turns).bold().cyan(),
-                "━".repeat(50).dimmed()
-            );
+            let current_score = ((turn - 1) as u64 * 100)
+                + self.cost_tracker.as_ref().map(|t| t.total_tokens() / 10).unwrap_or(0);
+            println!("{}", format_stage_header(turn, self.max_turns, current_score));
 
-            // Check cache or execute LLM call with animated loader
+            // Check cache or execute LLM call with 8-bit animated loader
             let cached_response = if let Some(ref cache) = self.cache_manager {
                 cache.get(self.client.model(), &messages)
             } else {
@@ -159,7 +158,7 @@ impl LoopRunner {
                 println!("   {}", "⚡ Cache Hit: Loaded response from disk cache (0 tokens)".dimmed());
                 (resp, crate::llm::Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 })
             } else {
-                let mut spinner = Spinner::start(format!("Thinking... ({})", self.client.model()));
+                let mut spinner = Spinner::start(format!("🕹️  ARCADE THINKING... [{}]", self.client.model()));
                 let res = self.client.send_turn_with_usage(&messages).await;
                 spinner.stop();
 
@@ -184,24 +183,23 @@ impl LoopRunner {
             // Print thought
             println!(
                 "{} {}",
-                "💭 Thought:".bold().yellow(),
+                "💭 [8-BIT THOUGHT]:".bold().yellow(),
                 truncate_display(&agent_response.thought, 200)
             );
             println!(
                 "{} {:?}",
-                "📍 Phase:".bold().magenta(),
+                "📍 [STAGE PHASE]:".bold().magenta(),
                 agent_response.phase
             );
             println!(
                 "{} {}",
-                "🔧 Action:".bold().green(),
+                "🔧 [ACTION COMBO]:".bold().green(),
                 action_summary(&agent_response.action)
             );
 
             // Check for finish
             if let Action::Finish { ref summary } = agent_response.action {
-                println!("\n{}", "✅ AGENT COMPLETE".bold().green());
-                println!("{}", summary);
+                println!("{}", format_stage_clear(summary));
 
                 if let Some(ref hooks) = self.hook_manager {
                     let ctx = HookContext {
@@ -309,8 +307,8 @@ impl LoopRunner {
                 }
             }
 
-            // Execute the action with animated loader
-            let mut spinner = Spinner::start(format!("Executing: {}", action_summary(&agent_response.action)));
+            // Execute the action with 8-bit animated loader
+            let mut spinner = Spinner::start(format!("⚡ EXECUTING COMBO: {}", action_summary(&agent_response.action)));
             let result = executor::dispatch(&agent_response.action);
             spinner.stop();
 
@@ -374,12 +372,10 @@ impl LoopRunner {
                 );
                 println!(
                     "{}",
-                    format!(
+                    format_game_over(&format!(
                         "⚠️  {} consecutive failures detected — injecting rollback hint",
                         consecutive_failures
-                    )
-                    .bold()
-                    .red()
+                    ))
                 );
 
                 if let Some(ref hooks) = self.hook_manager {

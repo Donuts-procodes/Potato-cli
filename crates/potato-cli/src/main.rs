@@ -371,16 +371,11 @@ async fn main() -> Result<()> {
                 println!("{} Session saved: {}", "💾".cyan(), saved.display().to_string().dimmed());
             }
 
-            println!("\n{}", "═".repeat(60).green());
-            println!("{}", "🎉 MISSION COMPLETE".bold().green());
-            println!("{}", "═".repeat(60).green());
-            println!("{}", summary);
+            println!("{}", potato_cli::engine::arcade::format_stage_clear(&summary));
             Ok(())
         }
         Err(e) => {
-            eprintln!("\n{}", "═".repeat(60).red());
-            eprintln!("{} {}", "❌ MISSION FAILED:".bold().red(), e);
-            eprintln!("{}", "═".repeat(60).red());
+            eprintln!("{}", potato_cli::engine::arcade::format_game_over(&e.to_string()));
             Err(e)
         }
     }

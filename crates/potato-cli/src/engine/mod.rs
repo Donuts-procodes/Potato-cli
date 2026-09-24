@@ -1,3 +1,4 @@
+pub mod arcade;
 pub mod brain;
 pub mod cache;
 pub mod context;

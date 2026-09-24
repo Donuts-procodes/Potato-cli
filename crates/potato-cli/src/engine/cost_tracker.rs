@@ -109,6 +109,11 @@ impl CostTracker {
         self.inner.total_completion_tokens.load(Ordering::Relaxed)
     }
 
+    /// Returns total prompt and completion tokens combined.
+    pub fn total_tokens(&self) -> u64 {
+        self.prompt_tokens() + self.completion_tokens()
+    }
+
     /// Returns total turns (LLM calls) made.
     pub fn turns(&self) -> u64 {
         self.inner.total_turns.load(Ordering::Relaxed)

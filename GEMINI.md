@@ -11,6 +11,8 @@
   - `src/lib.rs`: Core engine library exports.
   - `src/agents/`: 20 Specialist & Meta subagents orchestrated by a central [Coordinator](file:///c:/Users/Lenovo/potato-cli/crates/potato-cli/src/agents/coordinator.rs).
   - `src/engine/`:
+    - `arcade.rs`: 8-bit arcade marquee, bootup sequence animation, sprite frame sets, stage headers, and victory/game over fanfare.
+    - `spinner.rs`: 8-bit animated loaders with neon CRT color cycling and Invader / Pacman themes.
     - `loop_runner.rs`: Super Loop execution engine with anti-oscillation rollback guards.
     - `repl.rs`: Interactive terminal REPL session (similar to Claude Code and Antigravity) with slash commands and onboarding wizard.
     - `context/`: `ContextAssembler` (system/toolchain probe) & `ContextCompressor` (dense turn condensation).
@@ -112,6 +114,6 @@
 
 ## 🛡️ Quality & Verification
 
-- **Tests**: 13/13 passing unit and integration tests (`cargo test`).
+- **Tests**: 21/21 passing unit and integration tests (`cargo test`).
 - **Linter**: Zero warnings on `cargo clippy --all-targets`.
 - **Pre-Write Gate**: In-memory AST checks run in ~35 µs before writing files to disk.

@@ -6,19 +6,16 @@ use std::process::Command;
 
 use crate::agents::{Coordinator, CustomAgent, SubagentTask, TaskCategory};
 use crate::config::PotatoConfig;
+use crate::engine::arcade::{
+    format_game_over, format_stage_clear, play_arcade_boot, render_pixel_bar, ARCADE_BANNER,
+};
 use crate::engine::brain::Brain;
 use crate::engine::cache::CacheManager;
 use crate::engine::session::{generate_session_id, get_session_dir, list_sessions, SessionCheckpoint};
 use crate::engine::{CostTracker, HookManager, LoopRunner, ToolPolicy};
 use crate::llm::{ChatMessage, LlmClient};
 
-pub const REPL_BANNER: &str = r#"
-  ╔══════════════════════════════════════════════════╗
-  ║       🥔  P O T A T O   C L I  🥔               ║
-  ║     Autonomous Super Loop Agent Engine           ║
-  ║     Interactive REPL Mode • Type /help for cmds  ║
-  ╚══════════════════════════════════════════════════╝
-"#;
+pub const REPL_BANNER: &str = ARCADE_BANNER;
 
 pub struct ReplEngine {
     config: PotatoConfig,
@@ -67,6 +64,7 @@ impl ReplEngine {
     }
 
     pub async fn run(mut self) -> Result<()> {
+        play_arcade_boot().await;
         println!("{}", REPL_BANNER.bold().yellow());
 
         // Check for missing API Key and prompt first-time onboarding
@@ -81,14 +79,14 @@ impl ReplEngine {
         let mut reader = stdin.lock();
 
         loop {
-            print!("{}", "🥔 ❯ ".bold().yellow());
+            print!("{}", "👾 POTATO ❯ ".bold().yellow());
             io::stdout().flush()?;
 
             let mut input = String::new();
             let bytes_read = reader.read_line(&mut input)?;
             if bytes_read == 0 {
                 // EOF (Ctrl+D)
-                println!("\n{}", "Exiting Potato REPL. Goodbye! 🥔".bold().green());
+                println!("\n{}", "Exiting Potato REPL. Goodbye! 👾".bold().green());
                 break;
             }
 
@@ -122,9 +120,12 @@ impl ReplEngine {
             println!("{} {}", "Git       :".bold().cyan(), git.green());
         }
         println!("{} {}", "Model     :".bold().cyan(), self.config.llm.model.white());
+
+        let budget_bar = render_pixel_bar(self.total_cost_usd, self.config.cost.max_cost_usd, 8);
         println!(
-            "{} ${:.2} (spent: ${:.2})",
+            "{} {} ${:.2} (spent: ${:.2})",
             "Budget    :".bold().cyan(),
+            budget_bar,
             self.config.cost.max_cost_usd,
             self.total_cost_usd
         );
@@ -135,9 +136,11 @@ impl ReplEngine {
         );
         println!("{} {}", "Session   :".bold().cyan(), self.session_id.bold().yellow());
         if self.session_turns > 0 {
+            let mem_bar = render_pixel_bar(self.session_turns as f64, 50.0, 6);
             println!(
-                "{} {} turn{}, {} messages in memory",
+                "{} {} {} turn{}, {} messages in memory",
                 "Memory    :".bold().cyan(),
+                mem_bar,
                 self.session_turns.to_string().bold(),
                 if self.session_turns == 1 { "" } else { "s" },
                 self.session_messages.len().to_string().bold()
@@ -147,7 +150,7 @@ impl ReplEngine {
             "{}",
             "Type an objective (e.g. 'Build a Go API') or /help for commands. Exit: /exit".dimmed()
         );
-        println!("{}", "─".repeat(60).dimmed());
+        println!("{}", "─".repeat(64).dimmed());
     }
 
     fn run_onboarding_wizard(&mut self) -> Result<()> {
@@ -374,23 +377,21 @@ impl ReplEngine {
             commands.to_vec()
         };
 
-        println!("\n{}", "COMMANDS".bold().cyan());
-        println!("{}", "─".repeat(70).dimmed());
+        println!("\n{}", "╔══ 🕹️  8-BIT ARCADE COMMAND CARTRIDGES ═════════════════════════════════════════╗".bold().cyan());
         for (cmd, desc) in filtered {
             println!("  {:<20} {}", cmd.bold().yellow(), desc);
         }
-        println!("{}", "─".repeat(70).dimmed());
+        println!("{}", "╚════════════════════════════════════════════════════════════════════════════════╝".dimmed());
         println!("{}\n", "Type a slash command or enter an objective to run the agent loop.".dimmed());
     }
 
     fn print_models_menu(&self) {
-        println!("\n{}", "LATEST SUPPORTED MODELS:".bold().cyan());
-        println!("{}", "─".repeat(80).dimmed());
-        println!("Current active: {}\n", self.config.llm.model.bold().green());
+        println!("\n{}", "╔══ 🎮  SELECT YOUR FIGHTER (LLM ROSTER) ═════════════════════════════════════════╗".bold().cyan());
+        println!("  Current active fighter: {}\n", self.config.llm.model.bold().green());
 
         for (i, m) in crate::llm::ModelRegistry::all().iter().enumerate() {
             let active = if m.id.eq_ignore_ascii_case(&self.config.llm.model) {
-                "★ (active)".bold().green()
+                "★ (SELECTED)".bold().green()
             } else {
                 "".normal()
             };
@@ -406,7 +407,7 @@ impl ReplEngine {
             );
             println!("      {}", m.description.dimmed());
         }
-        println!("{}", "─".repeat(80).dimmed());
+        println!("{}", "╚════════════════════════════════════════════════════════════════════════════════╝".dimmed());
         println!("{}\n", "Switch model: /model <name> or /model <number> (e.g. /model 1 or /model o3-mini)".dimmed());
     }
 
@@ -632,10 +633,7 @@ impl ReplEngine {
                     println!("{} Session memory saved: {}", "💾".cyan(), saved_path.display().to_string().dimmed());
                 }
 
-                println!("\n{}", "═".repeat(60).green());
-                println!("{}", "🎉 MISSION COMPLETE".bold().green());
-                println!("{}", "═".repeat(60).green());
-                println!("{}\n", summary);
+                println!("{}", format_stage_clear(&summary));
             }
             Err(e) => {
                 // Auto-update Brain on failure so lessons/anti-patterns are learned
@@ -652,9 +650,7 @@ impl ReplEngine {
                 );
                 let _ = checkpoint.save(&session_dir.to_string_lossy());
 
-                eprintln!("\n{}", "═".repeat(60).red());
-                eprintln!("{} {}", "❌ MISSION FAILED:".bold().red(), e);
-                eprintln!("{}\n", "═".repeat(60).red());
+                eprintln!("{}", format_game_over(&e.to_string()));
             }
         }
 
