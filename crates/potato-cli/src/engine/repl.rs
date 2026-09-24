@@ -210,10 +210,33 @@ impl ReplEngine {
             }
             "/model" => {
                 if arg.is_empty() {
-                    println!("Current active model: {}", self.config.llm.model.bold().green());
+                    self.print_models_menu();
                 } else {
-                    self.config.llm.model = arg.clone();
-                    println!("Switched active model to: {}", arg.bold().green());
+                    let target_model = if let Ok(idx) = arg.parse::<usize>() {
+                        if let Some(info) = crate::llm::ModelRegistry::by_index(idx) {
+                            info.id.to_string()
+                        } else {
+                            println!("{}", format!("Invalid model number {}. Type /model to view options.", idx).red());
+                            return Ok(true);
+                        }
+                    } else {
+                        arg.clone()
+                    };
+
+                    if let Some(info) = crate::llm::ModelRegistry::find(&target_model) {
+                        self.config.cost.prompt_cost_per_million = info.prompt_cost_per_m;
+                        self.config.cost.completion_cost_per_million = info.completion_cost_per_m;
+                        println!(
+                            "Switched active model to: {} ({}) [${:.2} / ${:.2} per 1M tokens]",
+                            info.id.bold().green(),
+                            info.provider.cyan(),
+                            info.prompt_cost_per_m,
+                            info.completion_cost_per_m
+                        );
+                    } else {
+                        println!("Switched active model to custom: {}", target_model.bold().green());
+                    }
+                    self.config.llm.model = target_model;
                 }
             }
             "/budget" => {
@@ -291,6 +314,33 @@ impl ReplEngine {
         }
         println!("{}", "─".repeat(70).dimmed());
         println!("{}\n", "Type a slash command or enter an objective to run the agent loop.".dimmed());
+    }
+
+    fn print_models_menu(&self) {
+        println!("\n{}", "LATEST SUPPORTED MODELS:".bold().cyan());
+        println!("{}", "─".repeat(80).dimmed());
+        println!("Current active: {}\n", self.config.llm.model.bold().green());
+
+        for (i, m) in crate::llm::ModelRegistry::all().iter().enumerate() {
+            let active = if m.id.eq_ignore_ascii_case(&self.config.llm.model) {
+                "★ (active)".bold().green()
+            } else {
+                "".normal()
+            };
+            println!(
+                "  {:2}. {:<22} {:<16} {:>4}k ctx   ${:.2} / ${:.2}  {}",
+                (i + 1).to_string().dimmed(),
+                m.id.bold().yellow(),
+                format!("[{}]", m.provider).cyan(),
+                m.context_tokens / 1000,
+                m.prompt_cost_per_m,
+                m.completion_cost_per_m,
+                active
+            );
+            println!("      {}", m.description.dimmed());
+        }
+        println!("{}", "─".repeat(80).dimmed());
+        println!("{}\n", "Switch model: /model <name> or /model <number> (e.g. /model 1 or /model o3-mini)".dimmed());
     }
 
     fn ensure_client(&mut self) -> Result<LlmClient> {
@@ -525,11 +575,9 @@ fn get_target_config_path() -> std::path::PathBuf {
     let cwd_str = cwd.to_string_lossy().to_lowercase();
     let is_system_dir = cwd_str.contains("system32") || cwd_str.contains("windows");
 
-    if !is_system_dir {
-        if std::fs::write("potato.toml.tmp", "# test\n").is_ok() {
-            let _ = std::fs::remove_file("potato.toml.tmp");
-            return local.to_path_buf();
-        }
+    if !is_system_dir && std::fs::write("potato.toml.tmp", "# test\n").is_ok() {
+        let _ = std::fs::remove_file("potato.toml.tmp");
+        return local.to_path_buf();
     }
 
     if let Some(global_dir) = dirs::config_dir() {
