@@ -76,14 +76,19 @@
   - `/model [name]`: Views or switches the active LLM model.
   - `/budget [usd]`: Views or updates the session budget.
   - `/cost`: Displays real-time token counts and USD expenditure.
+  - `/session`: Inspects active session memory, context turns, and mutated files.
+  - `/sessions`: Lists all historical saved sessions in `.potato/sessions/`.
+  - `/resume [id]`: Resumes a previous session checkpoint (latest by default, or by session ID).
+  - `/reset`: Resets session memory and starts a clean session (or `/new`).
   - `/clear`: Clears the terminal screen.
   - `/exit` or `/quit`: Cleanly terminates the interactive session.
-- **CLI Subcommands**:
+- **CLI Subcommands & Options**:
   - `potato init`
   - `potato audit`
   - `potato review`
   - `potato spec "<goal>"`
   - `potato pipeline "<goal>"`
+  - `potato --resume [id]` (or `pot --resume`): Resumes a previous session from disk.
 
 ---
 

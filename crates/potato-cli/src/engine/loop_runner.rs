@@ -21,6 +21,7 @@ pub struct LoopRunner {
     cost_tracker: Option<CostTracker>,
     tool_policy: Option<ToolPolicy>,
     hook_manager: Option<HookManager>,
+    history: Vec<ChatMessage>,
 }
 
 impl LoopRunner {
@@ -32,6 +33,7 @@ impl LoopRunner {
             cost_tracker: None,
             tool_policy: None,
             hook_manager: None,
+            history: Vec::new(),
         }
     }
 
@@ -55,21 +57,43 @@ impl LoopRunner {
         self
     }
 
+    pub fn with_history(mut self, history: Vec<ChatMessage>) -> Self {
+        self.history = history;
+        self
+    }
+
     pub async fn run(&self) -> Result<String> {
-        let system_prompt = build_system_prompt();
-        let mut messages: Vec<ChatMessage> = vec![
-            ChatMessage {
-                role: "system".to_string(),
-                content: system_prompt,
-            },
-            ChatMessage {
+        let (summary, _) = self.run_session().await?;
+        Ok(summary)
+    }
+
+    pub async fn run_session(&self) -> Result<(String, Vec<ChatMessage>)> {
+        let mut messages: Vec<ChatMessage> = if self.history.is_empty() {
+            let system_prompt = build_system_prompt();
+            vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: system_prompt,
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: format!(
+                        "## OBJECTIVE\n{}\n\n## INITIAL STATE\nWorking directory is the current directory. Begin with PHASE 1: SPECIFICATION & ARCHITECTURE.",
+                        self.objective
+                    ),
+                },
+            ]
+        } else {
+            let mut msgs = self.history.clone();
+            msgs.push(ChatMessage {
                 role: "user".to_string(),
                 content: format!(
-                    "## OBJECTIVE\n{}\n\n## INITIAL STATE\nWorking directory is the current directory. Begin with PHASE 1: SPECIFICATION & ARCHITECTURE.",
+                    "## SUBSEQUENT OBJECTIVE (CONTINUING ACTIVE SESSION)\n{}\n\nContinue building upon the existing architectural state, touched files, and implementation.",
                     self.objective
                 ),
-            },
-        ];
+            });
+            msgs
+        };
 
         let mut consecutive_failures: usize = 0;
 
@@ -147,7 +171,7 @@ impl LoopRunner {
                     content: serde_json::to_string(&agent_response)?,
                 });
 
-                return Ok(summary.clone());
+                return Ok((summary.clone(), messages));
             }
 
             // Check ToolPolicy permissions

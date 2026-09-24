@@ -6,8 +6,9 @@ use std::process::Command;
 
 use crate::agents::{Coordinator, CustomAgent, SubagentTask, TaskCategory};
 use crate::config::PotatoConfig;
+use crate::engine::session::{generate_session_id, get_session_dir, list_sessions, SessionCheckpoint};
 use crate::engine::{CostTracker, HookManager, LoopRunner, ToolPolicy};
-use crate::llm::LlmClient;
+use crate::llm::{ChatMessage, LlmClient};
 
 pub const REPL_BANNER: &str = r#"
   ╔══════════════════════════════════════════════════╗
@@ -22,6 +23,10 @@ pub struct ReplEngine {
     coordinator: Coordinator,
     total_tokens_used: u64,
     total_cost_usd: f64,
+    session_id: String,
+    session_messages: Vec<ChatMessage>,
+    session_turns: usize,
+    session_objective: String,
 }
 
 impl ReplEngine {
@@ -32,12 +37,25 @@ impl ReplEngine {
                 coordinator.register(Box::new(agent));
             }
         }
+        let session_id = generate_session_id();
         Self {
             config,
             coordinator,
             total_tokens_used: 0,
             total_cost_usd: 0.0,
+            session_id,
+            session_messages: Vec::new(),
+            session_turns: 0,
+            session_objective: String::new(),
         }
+    }
+
+    pub fn with_checkpoint(mut self, checkpoint: SessionCheckpoint) -> Self {
+        self.session_id = checkpoint.session_id;
+        self.session_messages = checkpoint.messages;
+        self.session_turns = checkpoint.turn;
+        self.session_objective = checkpoint.objective;
+        self
     }
 
     pub async fn run(mut self) -> Result<()> {
@@ -107,6 +125,16 @@ impl ReplEngine {
             "Agents    :".bold().cyan(),
             self.coordinator.agent_names().len().to_string().bold().green()
         );
+        println!("{} {}", "Session   :".bold().cyan(), self.session_id.bold().yellow());
+        if self.session_turns > 0 {
+            println!(
+                "{} {} turn{}, {} messages in memory",
+                "Memory    :".bold().cyan(),
+                self.session_turns.to_string().bold(),
+                if self.session_turns == 1 { "" } else { "s" },
+                self.session_messages.len().to_string().bold()
+            );
+        }
         println!(
             "{}",
             "Type an objective (e.g. 'Build a Go API') or /help for commands. Exit: /exit".dimmed()
@@ -258,6 +286,18 @@ impl ReplEngine {
                     (self.config.cost.max_cost_usd - self.total_cost_usd).max(0.0)
                 );
             }
+            "/session" | "/memory" => {
+                self.print_session_info();
+            }
+            "/sessions" => {
+                self.list_saved_sessions();
+            }
+            "/resume" => {
+                self.resume_session(&arg)?;
+            }
+            "/reset" | "/new" => {
+                self.reset_session();
+            }
             "/clear" => {
                 print!("\x1B[2J\x1B[1;1H");
                 io::stdout().flush()?;
@@ -286,6 +326,10 @@ impl ReplEngine {
             ("/model [name]", "View or switch active LLM model (e.g. /model gpt-4o)"),
             ("/budget [usd]", "View or set session budget in USD (e.g. /budget 10.0)"),
             ("/cost", "Display token usage metrics and real-time USD expenditure"),
+            ("/session", "Inspect active session memory, context turns, and mutated files"),
+            ("/sessions", "List all saved historical sessions"),
+            ("/resume [id]", "Resume a previous session (latest by default, or by session ID)"),
+            ("/reset", "Reset session memory and start a fresh session (or /new)"),
             ("/clear", "Clear the terminal screen"),
             ("/help", "Show interactive guide and usage tips"),
             ("/exit", "Exit the interactive REPL session (or /quit)"),
@@ -521,18 +565,62 @@ impl ReplEngine {
 
         let runner = LoopRunner::new(client, objective.to_string())
             .with_max_turns(self.config.agent.max_turns)
-            .with_cost_tracker(cost_tracker)
+            .with_cost_tracker(cost_tracker.clone())
             .with_tool_policy(tool_policy)
-            .with_hook_manager(hook_manager);
+            .with_hook_manager(hook_manager)
+            .with_history(self.session_messages.clone());
 
-        match runner.run().await {
-            Ok(summary) => {
+        match runner.run_session().await {
+            Ok((summary, updated_messages)) => {
+                // Record tokens and cost
+                self.total_tokens_used += cost_tracker.prompt_tokens() + cost_tracker.completion_tokens();
+                self.total_cost_usd += cost_tracker.current_cost_usd();
+
+                // Update session memory
+                self.session_messages = updated_messages;
+                self.session_turns += 1;
+                if self.session_objective.is_empty() {
+                    self.session_objective = objective.to_string();
+                } else {
+                    self.session_objective = format!("{} | {}", self.session_objective, objective);
+                }
+
+                // Compress memory if it exceeds 60 messages to preserve token budget
+                if self.session_messages.len() > 60 {
+                    self.session_messages = crate::engine::context::ContextCompressor::compress(&self.session_messages, 30);
+                    println!("{}", "🧠 Condensed session memory to preserve context window.".dimmed());
+                }
+
+                // Auto-save checkpoint
+                let session_dir = get_session_dir();
+                let checkpoint = SessionCheckpoint::new(
+                    self.session_id.clone(),
+                    self.session_objective.clone(),
+                    self.session_messages.clone(),
+                    self.session_turns,
+                    0,
+                );
+                if let Ok(saved_path) = checkpoint.save(&session_dir.to_string_lossy()) {
+                    println!("{} Session memory saved: {}", "💾".cyan(), saved_path.display().to_string().dimmed());
+                }
+
                 println!("\n{}", "═".repeat(60).green());
                 println!("{}", "🎉 MISSION COMPLETE".bold().green());
                 println!("{}", "═".repeat(60).green());
                 println!("{}\n", summary);
             }
             Err(e) => {
+                // Auto-save checkpoint on failure so state is preserved
+                let session_dir = get_session_dir();
+                let checkpoint = SessionCheckpoint::new(
+                    self.session_id.clone(),
+                    self.session_objective.clone(),
+                    self.session_messages.clone(),
+                    self.session_turns,
+                    1,
+                );
+                let _ = checkpoint.save(&session_dir.to_string_lossy());
+
                 eprintln!("\n{}", "═".repeat(60).red());
                 eprintln!("{} {}", "❌ MISSION FAILED:".bold().red(), e);
                 eprintln!("{}\n", "═".repeat(60).red());
@@ -540,6 +628,159 @@ impl ReplEngine {
         }
 
         Ok(())
+    }
+
+    fn print_session_info(&self) {
+        println!("\n{}", "🧠 ACTIVE SESSION MEMORY:".bold().cyan());
+        println!("{}", "─".repeat(60).dimmed());
+        println!("  Session ID  : {}", self.session_id.bold().yellow());
+        println!("  Turns Run   : {}", self.session_turns.to_string().bold());
+        println!("  Messages    : {} in active context", self.session_messages.len().to_string().bold());
+        if !self.session_objective.is_empty() {
+            println!("  Objectives  : {}", self.session_objective.white());
+        }
+
+        // Extract touched files
+        let mut touched = Vec::new();
+        for msg in &self.session_messages {
+            if msg.role == "assistant" {
+                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&msg.content) {
+                    if let Some(action) = val.get("action") {
+                        if let Some(path) = action.get("path").and_then(|p| p.as_str()) {
+                            if !touched.contains(&path.to_string()) {
+                                touched.push(path.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if !touched.is_empty() {
+            println!("  Touched File{}:", if touched.len() == 1 { "" } else { "s" });
+            for f in &touched {
+                println!("    • {}", f.green());
+            }
+        }
+
+        let session_dir = get_session_dir();
+        let session_file = session_dir.join(format!("session_{}.json", self.session_id));
+        println!("  Storage     : {}", session_file.display().to_string().dimmed());
+        println!("{}\n", "─".repeat(60).dimmed());
+    }
+
+    fn list_saved_sessions(&self) {
+        let session_dir = get_session_dir();
+        println!("\n{}", "📂 SAVED SESSIONS:".bold().cyan());
+        println!("{}", "─".repeat(80).dimmed());
+        match list_sessions(&session_dir) {
+            Ok(list) if !list.is_empty() => {
+                for (i, s) in list.iter().enumerate() {
+                    let active_tag = if s.session_id == self.session_id {
+                        " ★ (active)".bold().green()
+                    } else {
+                        "".normal()
+                    };
+                    println!(
+                        "  {:2}. {} {} [{} turns, {} msgs] - {}",
+                        (i + 1).to_string().dimmed(),
+                        s.session_id.bold().yellow(),
+                        active_tag,
+                        s.turn,
+                        s.message_count,
+                        s.timestamp.dimmed()
+                    );
+                    let obj_preview = if s.objective.len() > 60 {
+                        format!("{}…", &s.objective[..60])
+                    } else {
+                        s.objective.clone()
+                    };
+                    if !obj_preview.is_empty() {
+                        println!("      Goal: {}", obj_preview.dimmed());
+                    }
+                }
+                println!("\n  Resume any session with: {}", "/resume <session_id>".bold().yellow());
+            }
+            Ok(_) => {
+                println!("  No saved sessions found in {}", session_dir.display().to_string().dimmed());
+            }
+            Err(e) => {
+                println!("  {} Failed to list sessions: {}", "⚠️".red(), e);
+            }
+        }
+        println!("{}\n", "─".repeat(80).dimmed());
+    }
+
+    fn resume_session(&mut self, target: &str) -> Result<()> {
+        let session_dir = get_session_dir();
+        let loaded = if target.trim().is_empty() || target.trim() == "latest" {
+            SessionCheckpoint::load_latest(&session_dir.to_string_lossy())?
+        } else {
+            SessionCheckpoint::load_by_id(&session_dir.to_string_lossy(), target.trim())?
+        };
+
+        if let Some(cp) = loaded {
+            // Save current session if it had any work done
+            if self.session_turns > 0 && self.session_id != cp.session_id {
+                let cur_cp = SessionCheckpoint::new(
+                    self.session_id.clone(),
+                    self.session_objective.clone(),
+                    self.session_messages.clone(),
+                    self.session_turns,
+                    0,
+                );
+                let _ = cur_cp.save(&session_dir.to_string_lossy());
+            }
+
+            println!(
+                "{} Resumed session: {} ({} turns, {} messages in memory)",
+                "✓".green(),
+                cp.session_id.bold().yellow(),
+                cp.turn.to_string().bold(),
+                cp.messages.len().to_string().bold()
+            );
+            if !cp.objective.is_empty() {
+                println!("  Prior Goal: {}", cp.objective.dimmed());
+            }
+            self.session_id = cp.session_id;
+            self.session_messages = cp.messages;
+            self.session_turns = cp.turn;
+            self.session_objective = cp.objective;
+        } else {
+            println!(
+                "{} Session '{}' not found in {}. Type /sessions to list available.",
+                "⚠️".yellow(),
+                target.trim(),
+                session_dir.display()
+            );
+        }
+        Ok(())
+    }
+
+    fn reset_session(&mut self) {
+        let session_dir = get_session_dir();
+        if self.session_turns > 0 {
+            let cur_cp = SessionCheckpoint::new(
+                self.session_id.clone(),
+                self.session_objective.clone(),
+                self.session_messages.clone(),
+                self.session_turns,
+                0,
+            );
+            let _ = cur_cp.save(&session_dir.to_string_lossy());
+            println!("{} Prior session {} saved to disk.", "💾".cyan(), self.session_id.dimmed());
+        }
+
+        self.session_id = generate_session_id();
+        self.session_messages.clear();
+        self.session_turns = 0;
+        self.session_objective.clear();
+
+        println!(
+            "{} Session memory reset. Starting new clean session: {}\n",
+            "✓".green(),
+            self.session_id.bold().yellow()
+        );
     }
 }
 

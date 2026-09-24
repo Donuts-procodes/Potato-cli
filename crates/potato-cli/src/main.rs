@@ -132,9 +132,30 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // Check for session resume flag
+    let resume_checkpoint = if let Some(ref resume_arg) = cli.resume {
+        let session_dir = potato_cli::engine::get_session_dir();
+        let cp = if resume_arg.is_empty() || resume_arg == "latest" {
+            potato_cli::engine::SessionCheckpoint::load_latest(&session_dir.to_string_lossy())?
+        } else {
+            potato_cli::engine::SessionCheckpoint::load_by_id(&session_dir.to_string_lossy(), resume_arg)?
+        };
+        if cp.is_none() {
+            eprintln!("{} Session '{}' not found in {}", "⚠️".yellow(), resume_arg, session_dir.display());
+        }
+        cp
+    } else {
+        None
+    };
+
     // Launch Interactive REPL Mode if no subcommand and no objective are supplied (like claude or agy)
     if cli.command.is_none() && cli.objective.as_deref().is_none_or(|s| s.trim().is_empty()) {
-        return ReplEngine::new(config).run().await;
+        let mut repl = ReplEngine::new(config);
+        if let Some(cp) = resume_checkpoint {
+            println!("{} Resumed session: {}", "🔄".cyan(), cp.session_id.bold().yellow());
+            repl = repl.with_checkpoint(cp);
+        }
+        return repl.run().await;
     }
 
     // Pre-flight check for Review: avoid requesting API keys if working tree is clean
@@ -326,14 +347,28 @@ async fn main() -> Result<()> {
     let tool_policy = ToolPolicy::from_config(config.tools.blocked_commands, config.tools.agents);
     let hook_manager = HookManager::from_config(&config.hooks);
 
-    let runner = LoopRunner::new(client, objective)
+    let initial_history = resume_checkpoint.map(|cp| cp.messages).unwrap_or_default();
+    let runner = LoopRunner::new(client, objective.clone())
         .with_max_turns(max_turns)
         .with_cost_tracker(cost_tracker)
         .with_tool_policy(tool_policy)
-        .with_hook_manager(hook_manager);
+        .with_hook_manager(hook_manager)
+        .with_history(initial_history);
 
-    match runner.run().await {
-        Ok(summary) => {
+    match runner.run_session().await {
+        Ok((summary, messages)) => {
+            let session_dir = potato_cli::engine::get_session_dir();
+            let checkpoint = potato_cli::engine::SessionCheckpoint::new(
+                potato_cli::engine::generate_session_id(),
+                objective,
+                messages,
+                1,
+                0,
+            );
+            if let Ok(saved) = checkpoint.save(&session_dir.to_string_lossy()) {
+                println!("{} Session saved: {}", "💾".cyan(), saved.display().to_string().dimmed());
+            }
+
             println!("\n{}", "═".repeat(60).green());
             println!("{}", "🎉 MISSION COMPLETE".bold().green());
             println!("{}", "═".repeat(60).green());

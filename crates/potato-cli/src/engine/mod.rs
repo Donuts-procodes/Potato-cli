@@ -21,3 +21,4 @@ pub use roadmap::Roadmap;
 pub use sandbox::Sandbox;
 pub use signal::{install_signal_handler, is_shutdown_requested};
 pub use tool_policy::{AgentToolConfig, ToolPolicy};
+pub use session::{generate_session_id, get_session_dir, list_sessions, SessionCheckpoint, SessionSummary};
