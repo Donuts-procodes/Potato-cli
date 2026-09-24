@@ -1,0 +1,29 @@
+{
+  "tasks": [
+    {
+      "id": "1",
+      "description": "Initialize the environment for Rust and Node.js",
+      "dependencies": []
+    },
+    {
+      "id": "2",
+      "description": "Define data models for gpt-4o-mini",
+      "dependencies": ["1"]
+    },
+    {
+      "id": "3",
+      "description": "Implement core logic for gpt-4o-mini",
+      "dependencies": ["2"]
+    },
+    {
+      "id": "4",
+      "description": "Write tests for gpt-4o-mini",
+      "dependencies": ["3"]
+    },
+    {
+      "id": "5",
+      "description": "Run tests and verify implementation",
+      "dependencies": ["4"]
+    }
+  ]
+}

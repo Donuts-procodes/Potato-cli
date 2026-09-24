@@ -162,8 +162,8 @@ impl ReplEngine {
         };
 
         match name.as_str() {
-            "/help" | "/h" => {
-                self.print_help();
+            "/" | "/help" | "/h" | "/?" => {
+                self.print_commands_menu(None);
             }
             "/init" => {
                 println!("{}", "🥔 Initializing workspace...".cyan());
@@ -245,32 +245,52 @@ impl ReplEngine {
                 return Ok(false);
             }
             _ => {
-                println!(
-                    "{} Unknown command '{}'. Type /help for available commands.",
-                    "⚠️".yellow(),
-                    name
-                );
+                println!("{} Unknown command '{}'.", "⚠️".yellow(), name);
+                self.print_commands_menu(Some(&name));
             }
         }
         Ok(true)
     }
 
-    fn print_help(&self) {
-        println!("\n{}", "🥔 POTATO INTERACTIVE COMMANDS:".bold().cyan());
-        println!("{}", "─".repeat(50).dimmed());
-        println!("  {}         Show this interactive command guide", "/help, /h".bold().yellow());
-        println!("  {}         Initialize .potato/ workspace and starter potato.toml", "/init".bold().yellow());
-        println!("  {}        Run security and dependency audit on workspace", "/audit".bold().yellow());
-        println!("  {}       Review uncommitted working tree git diffs", "/review".bold().yellow());
-        println!("  {}   Generate SPEC.md and ROADMAP.json without writing code", "/spec <goal>".bold().yellow());
-        println!("  {} Run 5-stage pipeline (Architect -> Impl -> Review -> Test)", "/pipeline <goal>".bold().yellow());
-        println!("  {}       List all 20 built-in and dynamic custom agents", "/agents".bold().yellow());
-        println!("  {}  View or switch current LLM model (e.g. /model gpt-4o)", "/model [name]".bold().yellow());
-        println!("  {} View or set max budget in USD (e.g. /budget 10.0)", "/budget [usd]".bold().yellow());
-        println!("  {}         Display token usage and session expenses", "/cost".bold().yellow());
-        println!("  {}        Clear terminal screen", "/clear".bold().yellow());
-        println!("  {}  Exit the interactive REPL session", "/exit, /quit".bold().yellow());
-        println!("\n  {} Type any request (e.g. 'Build a Go API') to run the Super Loop.\n", "Tip:".bold().green());
+    fn print_commands_menu(&self, filter: Option<&str>) {
+        let commands = [
+            ("/init", "Initialize a new potato workspace (.potato/ and starter potato.toml)"),
+            ("/audit", "Run security, vulnerability & dependency audit on current workspace"),
+            ("/review", "Review current uncommitted git changes for correctness and style"),
+            ("/spec <goal>", "Generate SPEC.md architecture and ROADMAP.json without writing code"),
+            ("/pipeline <goal>", "Run full 5-stage multi-agent pipeline (Architect -> Impl -> Review -> Test)"),
+            ("/agents", "List all 20 active specialist subagents and dynamic TOML agents"),
+            ("/model [name]", "View or switch active LLM model (e.g. /model gpt-4o)"),
+            ("/budget [usd]", "View or set session budget in USD (e.g. /budget 10.0)"),
+            ("/cost", "Display token usage metrics and real-time USD expenditure"),
+            ("/clear", "Clear the terminal screen"),
+            ("/help", "Show interactive guide and usage tips"),
+            ("/exit", "Exit the interactive REPL session (or /quit)"),
+        ];
+
+        let filtered: Vec<_> = if let Some(prefix) = filter {
+            let clean = prefix.trim_start_matches('/');
+            let matched: Vec<_> = commands
+                .iter()
+                .filter(|(cmd, _)| cmd.trim_start_matches('/').starts_with(clean))
+                .copied()
+                .collect();
+            if matched.is_empty() {
+                commands.to_vec()
+            } else {
+                matched
+            }
+        } else {
+            commands.to_vec()
+        };
+
+        println!("\n{}", "COMMANDS".bold().cyan());
+        println!("{}", "─".repeat(70).dimmed());
+        for (cmd, desc) in filtered {
+            println!("  {:<20} {}", cmd.bold().yellow(), desc);
+        }
+        println!("{}", "─".repeat(70).dimmed());
+        println!("{}\n", "Type a slash command or enter an objective to run the agent loop.".dimmed());
     }
 
     fn ensure_client(&mut self) -> Result<LlmClient> {
