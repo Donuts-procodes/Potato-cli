@@ -2,9 +2,9 @@
 
 ```
   ╔══════════════════════════════════════════════════════════════╗
-  ║    👾 🕹️  P O T A T O   C L I  🕹️ 👾                         ║
-  ║       ★ 8-BIT AUTONOMOUS SUPER LOOP AGENT ENGINE ★         ║
-  ║       INSERT COIN • 1-UP READY • TYPE /help FOR CMDS       ║
+  ║    👾 🕹️  P O T A T O   C L I  🕹️ 👾                       ║
+  ║       ★ 8-BIT AUTONOMOUS SUPER LOOP AGENT ENGINE ★          ║
+  ║       INSERT COIN • 1-UP READY • TYPE /help FOR CMDS         ║
   ╚══════════════════════════════════════════════════════════════╝
 ```
 
