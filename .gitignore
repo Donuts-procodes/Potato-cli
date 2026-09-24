@@ -1,16 +1,64 @@
-# Build artifacts
-/target/
-/npm/*/bin/
+# ==============================================================================
+# Potato CLI — Git Ignore Configuration
+# ==============================================================================
 
-# IDE
+# Rust build target & binaries
+/target/
+**/*.rs.bk
+*.pdb
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Prebuilt platform package binary binaries
+/npm/*/bin/
+npm-artifacts/
+*.tgz
+
+# Node & package managers
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# Potato runtime state & sessions (preserve base config if any)
+.potato/sessions/
+.potato/cache/
+.potato/tmp/
+.potato/*.log
+
+# Environment variables & API credentials
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.secret
+
+# Operating System specific
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# IDE & Editor caches
 .idea/
 .vscode/
+*.sublime-project
+*.sublime-workspace
 *.swp
 *.swo
+*~
+*.bak
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Node
-node_modules/
+# Testing & Scratch directories
+scratch/
+coverage/
+*.profraw
