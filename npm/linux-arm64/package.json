@@ -1,7 +1,7 @@
 {
-  "name": "@potato-cli/linux-arm64",
+  "name": "@potato-agent/linux-arm64",
   "version": "0.1.0",
-  "description": "Linux ARM64 binary for potato-cli",
+  "description": "Linux ARM64 binary for potato-agent",
   "os": ["linux"],
   "cpu": ["arm64"],
   "files": ["bin/potato"],

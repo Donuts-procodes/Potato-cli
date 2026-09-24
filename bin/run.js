@@ -7,11 +7,11 @@ const path = require("path");
 const fs = require("fs");
 
 const PLATFORMS = {
-  "darwin-arm64": "@potato-cli/darwin-arm64/bin/potato",
-  "darwin-x64": "@potato-cli/darwin-x64/bin/potato",
-  "linux-x64": "@potato-cli/linux-x64/bin/potato",
-  "linux-arm64": "@potato-cli/linux-arm64/bin/potato",
-  "win32-x64": "@potato-cli/win32-x64/bin/potato.exe",
+  "darwin-arm64": "@potato-agent/darwin-arm64/bin/potato",
+  "darwin-x64": "@potato-agent/darwin-x64/bin/potato",
+  "linux-x64": "@potato-agent/linux-x64/bin/potato",
+  "linux-arm64": "@potato-agent/linux-arm64/bin/potato",
+  "win32-x64": "@potato-agent/win32-x64/bin/potato.exe",
 };
 
 const key = `${process.platform}-${process.arch}`;
@@ -68,10 +68,10 @@ function resolveBinary() {
   console.error(`Expected package: ${target}`);
   console.error(`\nIf you installed via npm, bun, yarn, or pnpm, ensure optionalDependencies were not skipped.`);
   console.error(`To reinstall:`);
-  console.error(`  npm install -g potato-cli`);
-  console.error(`  bun add -g potato-cli`);
-  console.error(`  pnpm add -g potato-cli`);
-  console.error(`  yarn global add potato-cli`);
+  console.error(`  npm install -g potato-agent`);
+  console.error(`  bun add -g potato-agent`);
+  console.error(`  pnpm add -g potato-agent`);
+  console.error(`  yarn global add potato-agent`);
   process.exit(1);
 }
 

@@ -1,7 +1,7 @@
 {
-  "name": "@potato-cli/darwin-x64",
+  "name": "@potato-agent/darwin-x64",
   "version": "0.1.0",
-  "description": "macOS x64 (Intel) binary for potato-cli",
+  "description": "macOS x64 (Intel) binary for potato-agent",
   "os": ["darwin"],
   "cpu": ["x64"],
   "files": ["bin/potato"],
