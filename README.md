@@ -24,15 +24,25 @@ pnpm dlx potato-cli "Build a fullstack Next.js dashboard"
 yarn dlx potato-cli "Create an Express.js server with JWT auth"
 ```
 
-### Global Installation
+### Global Installation & Interactive REPL
 
+Install globally via any package manager:
 ```bash
 npm install -g potato-cli
 # or: bun add -g potato-cli
 # or: pnpm add -g potato-cli
 # or: yarn global add potato-cli
+```
 
-potato "Build a rate limiter microservice in Rust"
+Launch the interactive REPL (like `claude` or `agy`):
+```bash
+# Type `pot` or `potato` in any terminal without arguments:
+pot
+```
+
+Or pass natural language objectives directly:
+```bash
+pot "Build a rate limiter microservice in Rust"
 ```
 
 ### Via Docker & Docker Compose

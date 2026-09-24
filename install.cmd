@@ -25,17 +25,22 @@ if not exist "%BIN_SRC%" (
 set "CARGO_BIN=%USERPROFILE%\.cargo\bin"
 if not exist "%CARGO_BIN%" mkdir "%CARGO_BIN%"
 copy /Y "%BIN_SRC%" "%CARGO_BIN%\potato.exe" >nul
-echo [OK] Installed to %CARGO_BIN%\potato.exe
+copy /Y "%BIN_SRC%" "%CARGO_BIN%\pot.exe" >nul
+echo [OK] Installed to %CARGO_BIN%\potato.exe and pot.exe
 
 :: 2. Install to NPM bin directory if it exists
 set "NPM_BIN=%APPDATA%\npm"
 if exist "%NPM_BIN%" (
     copy /Y "%BIN_SRC%" "%NPM_BIN%\potato.exe" >nul
+    copy /Y "%BIN_SRC%" "%NPM_BIN%\pot.exe" >nul
     if exist "%NPM_BIN%\potato.ps1" del /F /Q "%NPM_BIN%\potato.ps1"
-    echo [OK] Installed to %NPM_BIN%\potato.exe (ExecutionPolicy guard active)
+    if exist "%NPM_BIN%\pot.ps1" del /F /Q "%NPM_BIN%\pot.ps1"
+    echo [OK] Installed to %NPM_BIN%\potato.exe and pot.exe (ExecutionPolicy guard active)
 )
 
 echo.
 echo Success! Potato CLI is installed globally across all terminals.
-echo Test: potato --version
-"%CARGO_BIN%\potato.exe" --version
+echo Test commands:
+echo   potato --version
+echo   pot --version
+"%CARGO_BIN%\pot.exe" --version

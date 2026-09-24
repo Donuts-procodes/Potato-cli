@@ -7,7 +7,8 @@ use potato_cli::agents::{Coordinator, CustomAgent, SubagentTask, TaskCategory};
 use potato_cli::config::PotatoConfig;
 use potato_cli::engine::{
     context::ContextAssembler, cost_tracker::CostTracker, hooks::HookManager,
-    install_signal_handler, tool_policy::ToolPolicy, LoopRunner,
+    install_signal_handler, repl::{handle_init, ReplEngine, REPL_BANNER},
+    tool_policy::ToolPolicy, LoopRunner,
 };
 use potato_cli::llm::LlmClient;
 
@@ -129,6 +130,11 @@ async fn main() -> Result<()> {
             }
         }
         return Ok(());
+    }
+
+    // Launch Interactive REPL Mode if no subcommand and no objective are supplied (like claude or agy)
+    if cli.command.is_none() && cli.objective.is_none() {
+        return ReplEngine::new(config).run().await;
     }
 
     let api_key = config.llm.api_key.clone().ok_or_else(|| {
@@ -333,64 +339,4 @@ async fn main() -> Result<()> {
     }
 }
 
-fn handle_init() -> Result<()> {
-    println!("{}", BANNER.bold().yellow());
-    println!("{}", "🥔 INITIALIZING POTATO WORKSPACE...".bold().cyan());
-
-    std::fs::create_dir_all(".potato/prompts")?;
-    std::fs::create_dir_all(".potato/lessons")?;
-    std::fs::create_dir_all(".potato/hooks")?;
-    std::fs::create_dir_all(".potato/sessions")?;
-
-    let prompt_sample = r#"# Rust Architecture & Style Rules
-- Always use `thiserror` for library error types and `anyhow` for application binaries.
-- Avoid `.unwrap()` or `.expect()` in production paths; return structured `Result`.
-- Ensure all public functions have doc comments.
-"#;
-    let prompt_path = ".potato/prompts/rust_style.md";
-    if !std::path::Path::new(prompt_path).exists() {
-        std::fs::write(prompt_path, prompt_sample)?;
-        println!("  {} Created sample prompt: {}", "✓".green(), prompt_path);
-    }
-
-    let config_path = "potato.toml";
-    if !std::path::Path::new(config_path).exists() {
-        let sample_config = r#"# Potato CLI Configuration
-
-[llm]
-model = "gpt-4o"
-temperature = 0.1
-timeout_seconds = 180
-
-[cost]
-max_cost_usd = 5.00
-warn_at_usd = 3.00
-
-[tools]
-blocked_commands = ["rm -rf /", "format C:", "mkfs"]
-
-[tools.Reviewer]
-allowed_actions = ["read_file", "list_dir", "finish"]
-
-[[agents]]
-name = "StyleEnforcer"
-category = "review"
-max_turns = 10
-model = "gpt-4o-mini"
-system_prompt = "Verify that all functions have documentation comments."
-"#;
-        std::fs::write(config_path, sample_config)?;
-        println!("  {} Created starter config: {}", "✓".green(), config_path);
-    }
-
-    println!("\n{}", "✨ Workspace initialized successfully in .potato/".bold().green());
-    Ok(())
-}
-
-const BANNER: &str = r#"
-  ╔══════════════════════════════════════════════════╗
-  ║       🥔  P O T A T O   C L I  🥔               ║
-  ║     Autonomous Super Loop Agent Engine           ║
-  ║     20 Specialist & Meta Subagents • Sandboxed   ║
-  ╚══════════════════════════════════════════════════╝
-"#;
+const BANNER: &str = REPL_BANNER;
