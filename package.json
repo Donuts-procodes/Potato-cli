@@ -7,8 +7,12 @@
     "potato-cli": "./bin/run.js",
     "pot": "./bin/run.js"
   },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
   "files": [
     "bin/run.js",
+    "scripts/postinstall.js",
     "README.md"
   ],
   "optionalDependencies": {
