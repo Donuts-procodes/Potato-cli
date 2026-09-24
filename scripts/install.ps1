@@ -31,18 +31,18 @@ if (-not (Test-Path $CargoBin)) {
     New-Item -ItemType Directory -Path $CargoBin -Force | Out-Null
 }
 Copy-Item $SourceExe (Join-Path $CargoBin "potato.exe") -Force
-Write-Host "✔ Installed: $CargoBin\potato.exe" -ForegroundColor Green
+Copy-Item $SourceExe (Join-Path $CargoBin "pot.exe") -Force
+Write-Host "✔ Installed: $CargoBin\potato.exe and pot.exe" -ForegroundColor Green
 
 # 3. Target 2: User NPM global bin directory
 $NpmBin = Join-Path $env:APPDATA "npm"
 if (Test-Path $NpmBin) {
     Copy-Item $SourceExe (Join-Path $NpmBin "potato.exe") -Force
+    Copy-Item $SourceExe (Join-Path $NpmBin "pot.exe") -Force
     # Remove any unsigned .ps1 shim that triggers ExecutionPolicy Restricted errors
-    $NpmPs1 = Join-Path $NpmBin "potato.ps1"
-    if (Test-Path $NpmPs1) {
-        Remove-Item $NpmPs1 -Force
-    }
-    Write-Host "✔ Installed: $NpmBin\potato.exe" -ForegroundColor Green
+    Remove-Item (Join-Path $NpmBin "potato.ps1") -Force -ErrorAction SilentlyContinue
+    Remove-Item (Join-Path $NpmBin "pot.ps1") -Force -ErrorAction SilentlyContinue
+    Write-Host "✔ Installed: $NpmBin\potato.exe and pot.exe" -ForegroundColor Green
 }
 
 # 4. Verify user PATH contains at least one destination

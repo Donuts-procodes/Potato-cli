@@ -26,7 +26,8 @@ fi
 
 cp "$SOURCE_BIN" "$INSTALL_DIR/potato"
 chmod +x "$INSTALL_DIR/potato"
+ln -sf "$INSTALL_DIR/potato" "$INSTALL_DIR/pot" 2>/dev/null || cp "$SOURCE_BIN" "$INSTALL_DIR/pot"
 
-echo "✔ Successfully installed to $INSTALL_DIR/potato"
-echo "You can now run 'potato --version' from any terminal!"
+echo "✔ Successfully installed to $INSTALL_DIR/potato and $INSTALL_DIR/pot"
+echo "You can now run 'potato' or 'pot' from any terminal!"
 "$INSTALL_DIR/potato" --version
