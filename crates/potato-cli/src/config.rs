@@ -82,10 +82,12 @@ pub struct SessionConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CostConfig {
-    /// Maximum total USD budget before hard abort
+    /// Maximum total USD budget before hard abort (0.0 = unlimited)
     pub max_cost_usd: f64,
-    /// Threshold in USD to issue a warning in terminal
+    /// Threshold in USD to issue a warning in terminal (0.0 = disabled)
     pub warn_at_usd: f64,
+    /// Maximum total session tokens before hard abort (0 = unlimited)
+    pub max_tokens: u64,
     /// Pricing per 1M prompt tokens (default $2.50)
     pub prompt_cost_per_million: f64,
     /// Pricing per 1M completion tokens (default $10.00)
@@ -112,8 +114,6 @@ pub struct ModelsConfig {
 }
 
 // --- Defaults ---
-
-
 
 impl Default for LlmConfig {
     fn default() -> Self {
@@ -161,8 +161,9 @@ impl Default for SessionConfig {
 impl Default for CostConfig {
     fn default() -> Self {
         Self {
-            max_cost_usd: 10.0,
-            warn_at_usd: 5.0,
+            max_cost_usd: 0.0,
+            warn_at_usd: 0.0,
+            max_tokens: 0,
             prompt_cost_per_million: 2.50,
             completion_cost_per_million: 10.00,
         }

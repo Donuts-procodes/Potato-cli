@@ -133,6 +133,58 @@ pub fn render_pixel_bar(current: f64, max: f64, width: usize) -> String {
     }
 }
 
+/// Formats a retro 8-bit token usage and cost report displayed after each prompt/turn.
+#[allow(clippy::too_many_arguments)]
+pub fn format_token_report(
+    turn_prompt: u32,
+    turn_completion: u32,
+    turn_cost: f64,
+    session_prompt: u64,
+    session_completion: u64,
+    session_cost: f64,
+    max_cost_usd: f64,
+    max_tokens: u64,
+) -> String {
+    let turn_total = turn_prompt + turn_completion;
+    let session_total = session_prompt + session_completion;
+
+    let token_limit_str = if max_tokens > 0 {
+        let pct = ((session_total as f64 / max_tokens as f64) * 100.0).min(100.0);
+        let bar = render_pixel_bar(session_total as f64, max_tokens as f64, 8);
+        format!("{}/{} {} ({:.1}%)", session_total, max_tokens, bar, pct)
+    } else {
+        format!("{} tokens (Limit: Unlimited)", session_total)
+    };
+
+    let budget_str = if max_cost_usd > 0.0 {
+        let pct = ((session_cost / max_cost_usd) * 100.0).min(100.0);
+        let bar = render_pixel_bar(session_cost, max_cost_usd, 8);
+        format!("${:.4} / ${:.2} {} ({:.1}%)", session_cost, max_cost_usd, bar, pct)
+    } else {
+        format!("${:.4} (Budget: Unlimited)", session_cost)
+    };
+
+    let banner = "👾 TURN TOKEN USAGE & COST REPORT".bold().yellow();
+    let divider = "─".repeat(56).dimmed();
+
+    format!(
+        "\n{}\n  {}\n  • {} : {} prompt + {} completion = {}\n  • {} : {}\n  • {} : {}\n  • {} : {}\n{}\n",
+        divider,
+        banner,
+        "Turn Tokens   ".bold().white(),
+        turn_prompt.to_string().cyan(),
+        turn_completion.to_string().cyan(),
+        format!("{} tokens", turn_total).bold().green(),
+        "Turn Cost     ".bold().white(),
+        format!("${:.4}", turn_cost).bold().green(),
+        "Session Tokens".bold().white(),
+        token_limit_str,
+        "Session Cost  ".bold().white(),
+        budget_str,
+        divider
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,6 +199,15 @@ mod tests {
 
         let empty = render_pixel_bar(0.0, 10.0, 4);
         assert!(empty.contains("▱▱▱▱"));
+    }
+
+    #[test]
+    fn test_token_report_format() {
+        let report = format_token_report(100, 50, 0.002, 100, 50, 0.002, 0.0, 0);
+        assert!(report.contains("TURN TOKEN USAGE & COST REPORT"));
+        assert!(report.contains("100 prompt + 50 completion = 150 tokens"));
+        assert!(report.contains("Budget: Unlimited"));
+        assert!(report.contains("Limit: Unlimited"));
     }
 
     #[test]

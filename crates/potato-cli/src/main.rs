@@ -34,9 +34,13 @@ struct Cli {
     #[arg(long, env = "POTATO_MAX_TURNS")]
     max_turns: Option<usize>,
 
-    /// Override max cost budget in USD (e.g. --budget 5.0)
+    /// Override max cost budget in USD (e.g. --budget 10.0, default: unlimited)
     #[arg(long)]
     budget: Option<f64>,
+
+    /// Maximum total session token limit (e.g. --token-limit 100000, default: unlimited)
+    #[arg(long)]
+    token_limit: Option<u64>,
 
     /// List all registered built-in and custom subagents
     #[arg(long)]
@@ -310,6 +314,8 @@ async fn main() -> Result<()> {
 
     let max_turns = cli.max_turns.unwrap_or(config.agent.max_turns);
     let max_budget = cli.budget.unwrap_or(config.cost.max_cost_usd);
+    let max_tokens = cli.token_limit.unwrap_or(config.cost.max_tokens);
+    let rules = potato_cli::engine::RulesEngine::load();
 
     // Banner
     println!("{}", BANNER.bold().yellow());
@@ -323,10 +329,30 @@ async fn main() -> Result<()> {
         "Max turns:".bold().cyan(),
         max_turns.to_string().white()
     );
+    let budget_label = if max_budget > 0.0 {
+        format!("${:.2}", max_budget)
+    } else {
+        "Unlimited".to_string()
+    };
     println!(
         "{} {}",
         "Cost budget:".bold().cyan(),
-        format!("${:.2}", max_budget).white()
+        budget_label.white()
+    );
+    let tokens_label = if max_tokens > 0 {
+        format!("{} tokens", max_tokens)
+    } else {
+        "Unlimited".to_string()
+    };
+    println!(
+        "{} {}",
+        "Token limit:".bold().cyan(),
+        tokens_label.white()
+    );
+    println!(
+        "{} {}",
+        "Rules:".bold().cyan(),
+        rules.summary().white()
     );
     println!(
         "{} {}",
@@ -342,6 +368,7 @@ async fn main() -> Result<()> {
 
     // Build cost tracker, tool policy, hook manager
     let cost_tracker = CostTracker::new(max_budget, config.cost.warn_at_usd)
+        .with_token_limit(max_tokens)
         .with_pricing(config.cost.prompt_cost_per_million, config.cost.completion_cost_per_million);
 
     let tool_policy = ToolPolicy::from_config(config.tools.blocked_commands, config.tools.agents);
@@ -355,7 +382,8 @@ async fn main() -> Result<()> {
         .with_hook_manager(hook_manager)
         .with_history(initial_history)
         .with_cache(potato_cli::engine::CacheManager::new(None, true))
-        .with_brain(potato_cli::engine::Brain::new(None));
+        .with_brain(potato_cli::engine::Brain::new(None))
+        .with_rules(rules);
 
     match runner.run_session().await {
         Ok((summary, messages)) => {

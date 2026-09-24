@@ -28,6 +28,7 @@ pub struct LoopRunner {
     history: Vec<ChatMessage>,
     cache_manager: Option<CacheManager>,
     brain: Option<Brain>,
+    rules: Option<crate::engine::rules::RulesEngine>,
 }
 
 impl LoopRunner {
@@ -42,6 +43,7 @@ impl LoopRunner {
             history: Vec::new(),
             cache_manager: None,
             brain: None,
+            rules: None,
         }
     }
 
@@ -80,6 +82,11 @@ impl LoopRunner {
         self
     }
 
+    pub fn with_rules(mut self, rules: crate::engine::rules::RulesEngine) -> Self {
+        self.rules = Some(rules);
+        self
+    }
+
     pub async fn run(&self) -> Result<String> {
         let (summary, _) = self.run_session().await?;
         Ok(summary)
@@ -87,7 +94,14 @@ impl LoopRunner {
 
     pub async fn run_session(&self) -> Result<(String, Vec<ChatMessage>)> {
         let mut messages: Vec<ChatMessage> = if self.history.is_empty() {
-            let system_prompt = build_system_prompt();
+            let mut system_prompt = build_system_prompt();
+
+            // Inject custom user rules and personality directives (e.g. POTATO.md / GEMINI.md)
+            let rules = self.rules.clone().unwrap_or_else(crate::engine::rules::RulesEngine::load);
+            if !rules.is_empty() {
+                system_prompt.push_str(&rules.formatted_prompt_block());
+            }
+
             let mut msgs = vec![ChatMessage {
                 role: "system".to_string(),
                 content: system_prompt,
@@ -226,6 +240,10 @@ impl LoopRunner {
             // Check for finish
             if let Action::Finish { ref summary } = agent_response.action {
                 println!("{}", format_stage_clear(summary));
+
+                if let Some(ref tracker) = self.cost_tracker {
+                    println!("{}", tracker.format_turn_report());
+                }
 
                 if let Some(ref hooks) = self.hook_manager {
                     let ctx = HookContext {

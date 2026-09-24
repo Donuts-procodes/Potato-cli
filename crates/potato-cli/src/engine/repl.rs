@@ -28,6 +28,7 @@ pub struct ReplEngine {
     session_objective: String,
     cache_manager: CacheManager,
     brain: Brain,
+    rules: crate::engine::rules::RulesEngine,
 }
 
 impl ReplEngine {
@@ -41,6 +42,7 @@ impl ReplEngine {
         let session_id = generate_session_id();
         let cache_manager = CacheManager::new(None, true);
         let brain = Brain::new(None);
+        let rules = crate::engine::rules::RulesEngine::load();
         Self {
             config,
             coordinator,
@@ -52,6 +54,7 @@ impl ReplEngine {
             session_objective: String::new(),
             cache_manager,
             brain,
+            rules,
         }
     }
 
@@ -121,14 +124,22 @@ impl ReplEngine {
         }
         println!("{} {}", "Model     :".bold().cyan(), self.config.llm.model.white());
 
-        let budget_bar = render_pixel_bar(self.total_cost_usd, self.config.cost.max_cost_usd, 8);
-        println!(
-            "{} {} ${:.2} (spent: ${:.2})",
-            "Budget    :".bold().cyan(),
-            budget_bar,
-            self.config.cost.max_cost_usd,
-            self.total_cost_usd
-        );
+        let budget_str = if self.config.cost.max_cost_usd > 0.0 {
+            let budget_bar = render_pixel_bar(self.total_cost_usd, self.config.cost.max_cost_usd, 8);
+            format!("{} ${:.2} (spent: ${:.4})", budget_bar, self.config.cost.max_cost_usd, self.total_cost_usd)
+        } else {
+            format!("Unlimited (spent: ${:.4})", self.total_cost_usd)
+        };
+        println!("{} {}", "Budget    :".bold().cyan(), budget_str);
+
+        let token_str = if self.config.cost.max_tokens > 0 {
+            let token_bar = render_pixel_bar(self.total_tokens_used as f64, self.config.cost.max_tokens as f64, 8);
+            format!("{} {} / {} tokens", token_bar, self.total_tokens_used, self.config.cost.max_tokens)
+        } else {
+            format!("Unlimited (used: {} tokens)", self.total_tokens_used)
+        };
+        println!("{} {}", "Tokens    :".bold().cyan(), token_str);
+        println!("{} {}", "Rules     :".bold().cyan(), self.rules.summary().white());
         println!(
             "{} {} registered specialists",
             "Agents    :".bold().cyan(),
@@ -307,22 +318,89 @@ impl ReplEngine {
             }
             "/budget" => {
                 if arg.is_empty() {
-                    println!("Current budget: ${:.2}", self.config.cost.max_cost_usd);
+                    if self.config.cost.max_cost_usd > 0.0 {
+                        println!("Current cost budget: ${:.2} (spent: ${:.4})", self.config.cost.max_cost_usd, self.total_cost_usd);
+                        println!("Tip: Set with /budget <usd> (e.g. /budget 10.0) or remove with /budget off");
+                    } else {
+                        println!("Current cost budget: Unlimited (no ceiling enforced). Spent: ${:.4}", self.total_cost_usd);
+                        println!("Tip: Set a budget ceiling with /budget <usd> (e.g. /budget 5.0)");
+                    }
+                } else if arg == "0" || arg == "off" || arg == "none" || arg == "clear" || arg == "unlimited" {
+                    self.config.cost.max_cost_usd = 0.0;
+                    println!("{} Cost budget limit removed (Unlimited)\n", "✓".green());
                 } else if let Ok(val) = arg.parse::<f64>() {
                     self.config.cost.max_cost_usd = val;
-                    println!("Updated budget to: ${:.2}", val);
+                    println!("{} Updated cost budget to: ${:.2}\n", "✓".green(), val);
                 } else {
-                    println!("{}", "Invalid budget amount. Example: /budget 10.0".red());
+                    println!("{}", "Invalid budget amount. Examples: /budget 10.0 or /budget off".red());
+                }
+            }
+            "/tokens" | "/tokenlimit" => {
+                if arg.is_empty() {
+                    if self.config.cost.max_tokens > 0 {
+                        let pct = (self.total_tokens_used as f64 / self.config.cost.max_tokens as f64 * 100.0).min(100.0);
+                        let bar = render_pixel_bar(self.total_tokens_used as f64, self.config.cost.max_tokens as f64, 8);
+                        println!("Token limit: {} / {} tokens {} ({:.1}%)", self.total_tokens_used, self.config.cost.max_tokens, bar, pct);
+                        println!("Tip: Change with /tokens <count> (e.g. /tokens 200000) or remove with /tokens off");
+                    } else {
+                        println!("Token limit: Unlimited (no ceiling enforced). Used: {} tokens", self.total_tokens_used);
+                        println!("Tip: Set a limit with /tokens <count> (e.g. /tokens 100000)");
+                    }
+                } else if arg == "0" || arg == "off" || arg == "none" || arg == "clear" || arg == "unlimited" {
+                    self.config.cost.max_tokens = 0;
+                    println!("{} Token limit removed (Unlimited)\n", "✓".green());
+                } else if let Ok(val) = arg.parse::<u64>() {
+                    self.config.cost.max_tokens = val;
+                    println!("{} Updated token limit to: {} tokens\n", "✓".green(), val);
+                } else {
+                    println!("{}", "Invalid token limit. Examples: /tokens 100000 or /tokens off".red());
+                }
+            }
+            "/rules" | "/personality" => {
+                if arg.is_empty() {
+                    self.print_rules_menu();
+                } else if arg == "init" || arg == "create" {
+                    match crate::engine::rules::RulesEngine::init_starter_rules(".") {
+                        Ok(p) => {
+                            self.rules = crate::engine::rules::RulesEngine::load();
+                            println!("{} Created starter rules in: {}", "✓".green(), p.display().to_string().cyan());
+                            println!("Edit this file to define project rules, style, and agent persona.\n");
+                        }
+                        Err(e) => println!("{} Failed to create rules file: {}\n", "❌".red(), e),
+                    }
+                } else if arg == "reload" {
+                    self.rules = crate::engine::rules::RulesEngine::load();
+                    println!("{} Reloaded custom rules: {}\n", "✓".green(), self.rules.summary().cyan());
+                } else {
+                    let rule_text = arg.strip_prefix("add ").unwrap_or(&arg);
+                    match crate::engine::rules::RulesEngine::append_rule(".", rule_text) {
+                        Ok(p) => {
+                            self.rules = crate::engine::rules::RulesEngine::load();
+                            println!("{} Added rule to {}: {}\n", "✓".green(), p.display().to_string().cyan(), rule_text.bold());
+                        }
+                        Err(e) => println!("{} Failed to add rule: {}\n", "❌".red(), e),
+                    }
                 }
             }
             "/cost" => {
                 println!("\n{}", "📊 SESSION USAGE & COST METRICS:".bold().cyan());
-                println!("  Tokens Used : {}", self.total_tokens_used.to_string().bold());
-                println!("  Total Cost  : ${:.4}", self.total_cost_usd);
-                println!(
-                    "  Remaining   : ${:.4}\n",
-                    (self.config.cost.max_cost_usd - self.total_cost_usd).max(0.0)
-                );
+                let token_limit_info = if self.config.cost.max_tokens > 0 {
+                    let pct = ((self.total_tokens_used as f64 / self.config.cost.max_tokens as f64) * 100.0).min(100.0);
+                    let bar = render_pixel_bar(self.total_tokens_used as f64, self.config.cost.max_tokens as f64, 8);
+                    format!("{}/{} tokens {} ({:.1}%)", self.total_tokens_used, self.config.cost.max_tokens, bar, pct)
+                } else {
+                    format!("{} tokens (Limit: Unlimited)", self.total_tokens_used)
+                };
+                let budget_info = if self.config.cost.max_cost_usd > 0.0 {
+                    let pct = ((self.total_cost_usd / self.config.cost.max_cost_usd) * 100.0).min(100.0);
+                    let bar = render_pixel_bar(self.total_cost_usd, self.config.cost.max_cost_usd, 8);
+                    let remaining = (self.config.cost.max_cost_usd - self.total_cost_usd).max(0.0);
+                    format!("${:.4} / ${:.2} {} ({:.1}%) [Remaining: ${:.4}]", self.total_cost_usd, self.config.cost.max_cost_usd, bar, pct, remaining)
+                } else {
+                    format!("${:.4} (Budget: Unlimited)", self.total_cost_usd)
+                };
+                println!("  Tokens Used : {}", token_limit_info);
+                println!("  Total Cost  : {}\n", budget_info);
             }
             "/session" | "/memory" => {
                 self.print_session_info();
@@ -376,7 +454,10 @@ impl ReplEngine {
             ("/agents", "List all 20 active specialist subagents and dynamic TOML agents"),
             ("/model [name]", "View or switch active LLM model (e.g. /model gpt-4o)"),
             ("/key [key]", "View or update your active LLM API key"),
-            ("/budget [usd]", "View or set session budget in USD (e.g. /budget 10.0)"),
+            ("/budget [usd]", "View, set, or remove cost ceiling (/budget 10.0 or /budget off)"),
+            ("/tokens [limit]", "View, set, or remove token limit (/tokens 100000 or /tokens off)"),
+            ("/rules [subcmd]", "View or manage personality & system rules (from POTATO.md / GEMINI.md)"),
+            ("/personality", "Alias for /rules: view, add, or initialize custom agent personality"),
             ("/cost", "Display token usage metrics and real-time USD expenditure"),
             ("/session", "Inspect active session memory, context turns, and mutated files"),
             ("/sessions", "List all saved historical sessions"),
@@ -411,6 +492,32 @@ impl ReplEngine {
         }
         println!("{}", "╚════════════════════════════════════════════════════════════════════════════════╝".dimmed());
         println!("{}\n", "Type a slash command or enter an objective to run the agent loop.".dimmed());
+    }
+
+    fn print_rules_menu(&self) {
+        println!("\n{}", "╔══ 📜 ACTIVE RULES & PERSONALITY DIRECTIVES ═══════════════════════════════════╗".bold().cyan());
+        if self.rules.is_empty() {
+            println!("  No active rule manifests found.");
+            println!("  • Create project rules  : {} (creates POTATO.md in workspace)", "/rules init".bold().yellow());
+            println!("  • Add quick directive   : {}", "/rules add <rule text>".bold().yellow());
+            println!("  • Global user rules     : {}", "~/.potato/rules.md".bold().cyan());
+            println!("  • Also auto-loads       : {}", "GEMINI.md / AGENTS.md".bold().green());
+        } else {
+            for entry in self.rules.entries() {
+                let badge = if entry.is_global { "[GLOBAL]".magenta() } else { "[PROJECT]".green() };
+                println!("  {} {}", badge, entry.source.bold().yellow());
+                for line in entry.content.lines().take(10) {
+                    println!("    {}", line.dimmed());
+                }
+                if entry.content.lines().count() > 10 {
+                    println!("    {}", "... (truncated, view source file for complete text)".italic().dimmed());
+                }
+                println!();
+            }
+            println!("  Commands: /rules add <rule> | /rules init | /rules reload");
+        }
+        println!("{}", "╚════════════════════════════════════════════════════════════════════════════════╝".dimmed());
+        println!();
     }
 
     fn print_models_menu(&self) {
@@ -600,10 +707,22 @@ impl ReplEngine {
         println!("\n{}", "─".repeat(60).dimmed());
         println!("{} {}", "Objective :".bold().cyan(), objective.bold().white());
         println!("{} {}", "Model     :".bold().cyan(), self.config.llm.model.white());
-        println!("{} ${:.2}", "Budget    :".bold().cyan(), self.config.cost.max_cost_usd);
+        let budget_str = if self.config.cost.max_cost_usd > 0.0 {
+            format!("${:.2}", self.config.cost.max_cost_usd)
+        } else {
+            "Unlimited".to_string()
+        };
+        println!("{} {}", "Budget    :".bold().cyan(), budget_str);
+        if self.config.cost.max_tokens > 0 {
+            println!("{} {} tokens", "Token Limit:".bold().cyan(), self.config.cost.max_tokens);
+        }
+        if !self.rules.is_empty() {
+            println!("{} {}", "Rules     :".bold().cyan(), self.rules.summary());
+        }
         println!("{}", "─".repeat(60).dimmed());
 
         let cost_tracker = CostTracker::new(self.config.cost.max_cost_usd, self.config.cost.warn_at_usd)
+            .with_token_limit(self.config.cost.max_tokens)
             .with_pricing(
                 self.config.cost.prompt_cost_per_million,
                 self.config.cost.completion_cost_per_million,
@@ -622,7 +741,8 @@ impl ReplEngine {
             .with_hook_manager(hook_manager)
             .with_history(self.session_messages.clone())
             .with_cache(self.cache_manager.clone())
-            .with_brain(self.brain.clone());
+            .with_brain(self.brain.clone())
+            .with_rules(self.rules.clone());
 
         match runner.run_session().await {
             Ok((summary, updated_messages)) => {
@@ -662,6 +782,7 @@ impl ReplEngine {
                 }
 
                 println!("{}", format_stage_clear(&summary));
+                println!("{}", cost_tracker.format_turn_report());
             }
             Err(e) => {
                 // Auto-update Brain on failure so lessons/anti-patterns are learned
@@ -679,6 +800,7 @@ impl ReplEngine {
                 let _ = checkpoint.save(&session_dir.to_string_lossy());
 
                 eprintln!("{}", format_game_over(&e.to_string()));
+                println!("{}", cost_tracker.format_turn_report());
             }
         }
 
@@ -938,7 +1060,7 @@ fn save_api_key_to_config(api_key: &str, model: &str) -> Result<()> {
         }
     } else {
         format!(
-            "# Potato CLI Configuration\n\n[llm]\napi_key = \"{}\"\nmodel = \"{}\"\ntemperature = 0.1\n\n[cost]\nmax_cost_usd = 5.00\n",
+            "# Potato CLI Configuration\n\n[llm]\napi_key = \"{}\"\nmodel = \"{}\"\ntemperature = 0.1\n\n[cost]\n# max_cost_usd = 10.00  # Optional USD ceiling (default: unlimited)\n# max_tokens = 200000    # Optional token limit (default: unlimited)\n",
             api_key, model
         )
     };
@@ -989,6 +1111,11 @@ pub fn handle_init() -> Result<()> {
     std::fs::create_dir_all(".potato/hooks")?;
     std::fs::create_dir_all(".potato/sessions")?;
 
+    // Scaffold starter POTATO.md personality rules manifest
+    if let Ok(rules_path) = crate::engine::rules::RulesEngine::init_starter_rules(".") {
+        println!("  {} Created personality & rules manifest: {}", "✓".green(), rules_path.display().to_string().cyan());
+    }
+
     let prompt_sample = r#"# Rust Architecture & Style Rules
 - Always use `thiserror` for library error types and `anyhow` for application binaries.
 - Avoid `.unwrap()` or `.expect()` in production paths; return structured `Result`.
@@ -1010,8 +1137,9 @@ temperature = 0.1
 timeout_seconds = 180
 
 [cost]
-max_cost_usd = 5.00
-warn_at_usd = 3.00
+# max_cost_usd = 10.00  # Optional USD ceiling (default: unlimited)
+# max_tokens = 500000   # Optional session token limit (default: unlimited)
+# warn_at_usd = 5.00
 
 [tools]
 blocked_commands = ["rm -rf /", "format C:", "mkfs"]

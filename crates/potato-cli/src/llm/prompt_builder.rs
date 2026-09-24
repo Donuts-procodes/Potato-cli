@@ -41,6 +41,12 @@ impl SystemPromptBuilder {
             }
         }
 
+        // Tier 3.5: User Personality & Custom Rules (POTATO.md / GEMINI.md)
+        let rules = crate::engine::rules::RulesEngine::load_from(&context.working_dir);
+        if !rules.is_empty() {
+            prompt.push_str(&rules.formatted_prompt_block());
+        }
+
         // Tier 4: Core Operational Directives & Safety Rules
         prompt.push_str(
             r#"
