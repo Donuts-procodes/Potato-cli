@@ -278,6 +278,33 @@ impl ReplEngine {
                     self.config.llm.model = target_model;
                 }
             }
+            "/key" | "/apikey" => {
+                if arg.is_empty() {
+                    let masked = match &self.config.llm.api_key {
+                        Some(k) if k.len() > 8 => format!("{}...{}", &k[..4], &k[k.len() - 4..]),
+                        Some(_) => "(configured)".to_string(),
+                        None => "(not configured)".to_string(),
+                    };
+                    println!("\nCurrent API key: {}", masked.bold().green());
+                    print!("{}", "Enter new API key (or press Enter to cancel): ".bold().yellow());
+                    io::stdout().flush()?;
+                    let mut input_key = String::new();
+                    io::stdin().read_line(&mut input_key)?;
+                    let trimmed = input_key.trim();
+                    if !trimmed.is_empty() {
+                        self.config.llm.api_key = Some(trimmed.to_string());
+                        save_api_key_to_config(trimmed, &self.config.llm.model)?;
+                        println!("{} API key updated and saved to potato.toml\n", "✓".green());
+                    } else {
+                        println!("API key unchanged.\n");
+                    }
+                } else {
+                    let trimmed = arg.trim();
+                    self.config.llm.api_key = Some(trimmed.to_string());
+                    save_api_key_to_config(trimmed, &self.config.llm.model)?;
+                    println!("{} API key updated and saved to potato.toml\n", "✓".green());
+                }
+            }
             "/budget" => {
                 if arg.is_empty() {
                     println!("Current budget: ${:.2}", self.config.cost.max_cost_usd);
@@ -348,6 +375,7 @@ impl ReplEngine {
             ("/pipeline <goal>", "Run full 5-stage multi-agent pipeline (Architect -> Impl -> Review -> Test)"),
             ("/agents", "List all 20 active specialist subagents and dynamic TOML agents"),
             ("/model [name]", "View or switch active LLM model (e.g. /model gpt-4o)"),
+            ("/key [key]", "View or update your active LLM API key"),
             ("/budget [usd]", "View or set session budget in USD (e.g. /budget 10.0)"),
             ("/cost", "Display token usage metrics and real-time USD expenditure"),
             ("/session", "Inspect active session memory, context turns, and mutated files"),
