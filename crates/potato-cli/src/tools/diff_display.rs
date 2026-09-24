@@ -171,7 +171,7 @@ fn build_hunks(changes: &[Change<'_>], context_lines: usize) -> Vec<Hunk> {
         }
 
         // Trim trailing context
-        while lines.len() > 0 && matches!(lines.last(), Some(DiffLine::Context(_))) && consecutive_equals > context_lines {
+        while !lines.is_empty() && matches!(lines.last(), Some(DiffLine::Context(_))) && consecutive_equals > context_lines {
             lines.pop();
             old_count = old_count.saturating_sub(1);
             new_count = new_count.saturating_sub(1);
@@ -189,8 +189,8 @@ fn build_hunks(changes: &[Change<'_>], context_lines: usize) -> Vec<Hunk> {
         }
 
         // Advance past this hunk
-        for k in i..j {
-            match changes[k] {
+        for change in &changes[i..j] {
+            match change {
                 Change::Equal(_) => { old_line += 1; new_line += 1; }
                 Change::Added(_) => { new_line += 1; }
                 Change::Removed(_) => { old_line += 1; }

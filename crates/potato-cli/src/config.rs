@@ -14,7 +14,7 @@ use crate::engine::tool_policy::AgentToolConfig;
 /// 3. `./potato.toml` (project-local)
 /// 4. `~/.config/potato/config.toml` (global)
 /// 5. Compiled defaults (lowest)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct PotatoConfig {
     pub llm: LlmConfig,
@@ -113,21 +113,7 @@ pub struct ModelsConfig {
 
 // --- Defaults ---
 
-impl Default for PotatoConfig {
-    fn default() -> Self {
-        Self {
-            llm: LlmConfig::default(),
-            agent: AgentConfig::default(),
-            sandbox: SandboxConfig::default(),
-            session: SessionConfig::default(),
-            cost: CostConfig::default(),
-            tools: ToolsConfig::default(),
-            hooks: HashMap::new(),
-            models: ModelsConfig::default(),
-            custom_agents: Vec::new(),
-        }
-    }
-}
+
 
 impl Default for LlmConfig {
     fn default() -> Self {

@@ -133,8 +133,20 @@ async fn main() -> Result<()> {
     }
 
     // Launch Interactive REPL Mode if no subcommand and no objective are supplied (like claude or agy)
-    if cli.command.is_none() && cli.objective.is_none() {
+    if cli.command.is_none() && cli.objective.as_deref().is_none_or(|s| s.trim().is_empty()) {
         return ReplEngine::new(config).run().await;
+    }
+
+    // Pre-flight check for Review: avoid requesting API keys if working tree is clean
+    if let Some(Commands::Review) = &cli.command {
+        println!("{}", BANNER.bold().yellow());
+        println!("{}", "🧐 REVIEWING UNCOMMITTED CHANGES...".bold().cyan());
+        let assembler = ContextAssembler::new(".");
+        let project_ctx = assembler.assemble()?;
+        if project_ctx.modified_files.is_empty() {
+            println!("{}", "✨ Working tree is clean — no uncommitted modified files to review.".green());
+            return Ok(());
+        }
     }
 
     let api_key = config.llm.api_key.clone().ok_or_else(|| {
@@ -153,7 +165,7 @@ async fn main() -> Result<()> {
 
     // Handle Subcommands
     match cli.command {
-        Some(Commands::Init) => unreachable!(),
+        Some(Commands::Init) => return handle_init(),
         Some(Commands::Audit) => {
             println!("{}", BANNER.bold().yellow());
             println!("{}", "🔍 RUNNING SECURITY & DEPENDENCY AUDIT...".bold().cyan());
@@ -169,8 +181,6 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         Some(Commands::Review) => {
-            println!("{}", BANNER.bold().yellow());
-            println!("{}", "🧐 REVIEWING UNCOMMITTED CHANGES...".bold().cyan());
             let assembler = ContextAssembler::new(".");
             let project_ctx = assembler.assemble()?;
             let review_task = SubagentTask {

@@ -14,6 +14,12 @@ pub struct ToolPolicy {
     pub agent_blocked_commands: HashMap<String, Vec<String>>,
 }
 
+impl Default for ToolPolicy {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ToolPolicy {
     pub fn new() -> Self {
         Self {

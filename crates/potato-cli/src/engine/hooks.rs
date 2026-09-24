@@ -26,6 +26,12 @@ pub struct HookEntry {
     pub script_path: PathBuf,
 }
 
+impl Default for HookManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HookManager {
     pub fn new() -> Self {
         Self {
@@ -55,7 +61,7 @@ impl HookManager {
         );
         self.hooks
             .entry(hook_type.clone())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(HookEntry {
                 hook_type,
                 script_path,
