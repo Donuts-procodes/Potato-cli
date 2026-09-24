@@ -65,6 +65,10 @@ impl LlmClient {
         }
     }
 
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
     pub fn from_env() -> Result<Self> {
         let api_key = std::env::var("OPENAI_API_KEY")
             .or_else(|_| std::env::var("POTATO_API_KEY"))

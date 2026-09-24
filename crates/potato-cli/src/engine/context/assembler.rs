@@ -110,9 +110,23 @@ impl ContextAssembler {
     }
 
     fn load_lessons(&self) -> Vec<String> {
-        let lessons_dir = self.workspace_root.join(".potato").join("lessons");
         let mut lessons = Vec::new();
 
+        // 1. Check .potato/brain/LESSONS.md
+        let brain_lessons = self.workspace_root.join(".potato").join("brain").join("LESSONS.md");
+        if brain_lessons.exists() {
+            if let Ok(content) = std::fs::read_to_string(&brain_lessons) {
+                for line in content.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.starts_with("- [") {
+                        lessons.push(trimmed.to_string());
+                    }
+                }
+            }
+        }
+
+        // 2. Check .potato/lessons/*.md
+        let lessons_dir = self.workspace_root.join(".potato").join("lessons");
         if lessons_dir.exists() {
             if let Ok(entries) = std::fs::read_dir(lessons_dir) {
                 for entry in entries.flatten() {

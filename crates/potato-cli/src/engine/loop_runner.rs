@@ -2,10 +2,13 @@ use anyhow::{Context, Result};
 use colored::Colorize;
 use tracing::{info, warn};
 
+use crate::engine::brain::Brain;
+use crate::engine::cache::CacheManager;
 use crate::engine::cost_tracker::CostTracker;
 use crate::engine::executor;
 use crate::engine::hooks::{HookContext, HookManager, HookType};
 use crate::engine::signal::is_shutdown_requested;
+use crate::engine::spinner::Spinner;
 use crate::engine::tool_policy::ToolPolicy;
 use crate::llm::{build_system_prompt, ChatMessage, LlmClient};
 use crate::tools::diff_display::unified_diff;
@@ -22,6 +25,8 @@ pub struct LoopRunner {
     tool_policy: Option<ToolPolicy>,
     hook_manager: Option<HookManager>,
     history: Vec<ChatMessage>,
+    cache_manager: Option<CacheManager>,
+    brain: Option<Brain>,
 }
 
 impl LoopRunner {
@@ -34,6 +39,8 @@ impl LoopRunner {
             tool_policy: None,
             hook_manager: None,
             history: Vec::new(),
+            cache_manager: None,
+            brain: None,
         }
     }
 
@@ -62,6 +69,16 @@ impl LoopRunner {
         self
     }
 
+    pub fn with_cache(mut self, cache: CacheManager) -> Self {
+        self.cache_manager = Some(cache);
+        self
+    }
+
+    pub fn with_brain(mut self, brain: Brain) -> Self {
+        self.brain = Some(brain);
+        self
+    }
+
     pub async fn run(&self) -> Result<String> {
         let (summary, _) = self.run_session().await?;
         Ok(summary)
@@ -70,19 +87,29 @@ impl LoopRunner {
     pub async fn run_session(&self) -> Result<(String, Vec<ChatMessage>)> {
         let mut messages: Vec<ChatMessage> = if self.history.is_empty() {
             let system_prompt = build_system_prompt();
-            vec![
-                ChatMessage {
-                    role: "system".to_string(),
-                    content: system_prompt,
-                },
-                ChatMessage {
-                    role: "user".to_string(),
-                    content: format!(
-                        "## OBJECTIVE\n{}\n\n## INITIAL STATE\nWorking directory is the current directory. Begin with PHASE 1: SPECIFICATION & ARCHITECTURE.",
-                        self.objective
-                    ),
-                },
-            ]
+            let mut msgs = vec![ChatMessage {
+                role: "system".to_string(),
+                content: system_prompt,
+            }];
+
+            if let Some(ref brain) = self.brain {
+                let brain_ctx = brain.assemble_context();
+                if !brain_ctx.is_empty() {
+                    msgs.push(ChatMessage {
+                        role: "user".to_string(),
+                        content: brain_ctx,
+                    });
+                }
+            }
+
+            msgs.push(ChatMessage {
+                role: "user".to_string(),
+                content: format!(
+                    "## OBJECTIVE\n{}\n\n## INITIAL STATE\nWorking directory is the current directory. Begin with PHASE 1: SPECIFICATION & ARCHITECTURE.",
+                    self.objective
+                ),
+            });
+            msgs
         } else {
             let mut msgs = self.history.clone();
             msgs.push(ChatMessage {
@@ -121,11 +148,29 @@ impl LoopRunner {
                 "━".repeat(50).dimmed()
             );
 
-            let (agent_response, usage) = self
-                .client
-                .send_turn_with_usage(&messages)
-                .await
-                .with_context(|| format!("LLM call failed on turn {}", turn))?;
+            // Check cache or execute LLM call with animated loader
+            let cached_response = if let Some(ref cache) = self.cache_manager {
+                cache.get(self.client.model(), &messages)
+            } else {
+                None
+            };
+
+            let (agent_response, usage) = if let Some(resp) = cached_response {
+                println!("   {}", "⚡ Cache Hit: Loaded response from disk cache (0 tokens)".dimmed());
+                (resp, crate::llm::Usage { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 })
+            } else {
+                let mut spinner = Spinner::start(format!("Thinking... ({})", self.client.model()));
+                let res = self.client.send_turn_with_usage(&messages).await;
+                spinner.stop();
+
+                let (resp, usage) = res.with_context(|| format!("LLM call failed on turn {}", turn))?;
+
+                if let Some(ref cache) = self.cache_manager {
+                    let _ = cache.set(self.client.model(), &messages, &resp);
+                }
+
+                (resp, usage)
+            };
 
             // Track cost and tokens
             if let Some(ref tracker) = self.cost_tracker {
@@ -170,6 +215,11 @@ impl LoopRunner {
                     role: "assistant".to_string(),
                     content: serde_json::to_string(&agent_response)?,
                 });
+
+                // Auto-update Brain
+                if let Some(ref brain) = self.brain {
+                    let _ = brain.auto_update(&self.objective, &messages, summary, true);
+                }
 
                 return Ok((summary.clone(), messages));
             }
@@ -259,8 +309,10 @@ impl LoopRunner {
                 }
             }
 
-            // Execute the action
+            // Execute the action with animated loader
+            let mut spinner = Spinner::start(format!("Executing: {}", action_summary(&agent_response.action)));
             let result = executor::dispatch(&agent_response.action);
+            spinner.stop();
 
             // Display result
             if result.success {

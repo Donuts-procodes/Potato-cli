@@ -353,7 +353,9 @@ async fn main() -> Result<()> {
         .with_cost_tracker(cost_tracker)
         .with_tool_policy(tool_policy)
         .with_hook_manager(hook_manager)
-        .with_history(initial_history);
+        .with_history(initial_history)
+        .with_cache(potato_cli::engine::CacheManager::new(None, true))
+        .with_brain(potato_cli::engine::Brain::new(None));
 
     match runner.run_session().await {
         Ok((summary, messages)) => {

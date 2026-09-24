@@ -6,6 +6,8 @@ use std::process::Command;
 
 use crate::agents::{Coordinator, CustomAgent, SubagentTask, TaskCategory};
 use crate::config::PotatoConfig;
+use crate::engine::brain::Brain;
+use crate::engine::cache::CacheManager;
 use crate::engine::session::{generate_session_id, get_session_dir, list_sessions, SessionCheckpoint};
 use crate::engine::{CostTracker, HookManager, LoopRunner, ToolPolicy};
 use crate::llm::{ChatMessage, LlmClient};
@@ -27,6 +29,8 @@ pub struct ReplEngine {
     session_messages: Vec<ChatMessage>,
     session_turns: usize,
     session_objective: String,
+    cache_manager: CacheManager,
+    brain: Brain,
 }
 
 impl ReplEngine {
@@ -38,6 +42,8 @@ impl ReplEngine {
             }
         }
         let session_id = generate_session_id();
+        let cache_manager = CacheManager::new(None, true);
+        let brain = Brain::new(None);
         Self {
             config,
             coordinator,
@@ -47,6 +53,8 @@ impl ReplEngine {
             session_messages: Vec::new(),
             session_turns: 0,
             session_objective: String::new(),
+            cache_manager,
+            brain,
         }
     }
 
@@ -298,6 +306,19 @@ impl ReplEngine {
             "/reset" | "/new" => {
                 self.reset_session();
             }
+            "/brain" => {
+                self.print_brain_info();
+            }
+            "/cache" => {
+                if arg == "clear" {
+                    match self.cache_manager.clear() {
+                        Ok(n) => println!("{} Cleared {} disk cache entries.", "✓".green(), n),
+                        Err(e) => println!("{} Failed to clear cache: {}", "⚠️".red(), e),
+                    }
+                } else {
+                    self.print_cache_info();
+                }
+            }
             "/clear" => {
                 print!("\x1B[2J\x1B[1;1H");
                 io::stdout().flush()?;
@@ -330,6 +351,8 @@ impl ReplEngine {
             ("/sessions", "List all saved historical sessions"),
             ("/resume [id]", "Resume a previous session (latest by default, or by session ID)"),
             ("/reset", "Reset session memory and start a fresh session (or /new)"),
+            ("/brain", "Inspect project Brain knowledge, architectural conventions, and lessons"),
+            ("/cache [clear]", "View LLM response cache performance metrics or clear cache"),
             ("/clear", "Clear the terminal screen"),
             ("/help", "Show interactive guide and usage tips"),
             ("/exit", "Exit the interactive REPL session (or /quit)"),
@@ -568,7 +591,9 @@ impl ReplEngine {
             .with_cost_tracker(cost_tracker.clone())
             .with_tool_policy(tool_policy)
             .with_hook_manager(hook_manager)
-            .with_history(self.session_messages.clone());
+            .with_history(self.session_messages.clone())
+            .with_cache(self.cache_manager.clone())
+            .with_brain(self.brain.clone());
 
         match runner.run_session().await {
             Ok((summary, updated_messages)) => {
@@ -591,6 +616,9 @@ impl ReplEngine {
                     println!("{}", "🧠 Condensed session memory to preserve context window.".dimmed());
                 }
 
+                // Auto-update Brain cognitive repository
+                let _ = self.brain.auto_update(objective, &self.session_messages, &summary, true);
+
                 // Auto-save checkpoint
                 let session_dir = get_session_dir();
                 let checkpoint = SessionCheckpoint::new(
@@ -610,6 +638,9 @@ impl ReplEngine {
                 println!("{}\n", summary);
             }
             Err(e) => {
+                // Auto-update Brain on failure so lessons/anti-patterns are learned
+                let _ = self.brain.auto_update(objective, &self.session_messages, &e.to_string(), false);
+
                 // Auto-save checkpoint on failure so state is preserved
                 let session_dir = get_session_dir();
                 let checkpoint = SessionCheckpoint::new(
@@ -781,6 +812,38 @@ impl ReplEngine {
             "✓".green(),
             self.session_id.bold().yellow()
         );
+    }
+
+    fn print_brain_info(&self) {
+        let stats = self.brain.stats();
+        println!("\n{}", "🧠 PROJECT BRAIN & COGNITIVE REPOSITORY:".bold().cyan());
+        println!("{}", "─".repeat(70).dimmed());
+        println!("  Knowledge Entries : {}", stats.knowledge_entries.to_string().bold());
+        println!("  Learned Lessons   : {}", stats.lessons_count.to_string().bold().green());
+        println!("  Tracked Files     : {}", stats.tracked_files_count.to_string().bold().yellow());
+        println!("  Storage Directory : {}", stats.brain_dir.dimmed());
+        println!("  Last Updated      : {}", stats.last_updated.dimmed());
+        println!("{}", "─".repeat(70).dimmed());
+
+        let brain_ctx = self.brain.assemble_context();
+        if !brain_ctx.is_empty() {
+            for line in brain_ctx.lines().take(15) {
+                println!("  {}", line);
+            }
+        }
+        println!("{}\n", "─".repeat(70).dimmed());
+    }
+
+    fn print_cache_info(&self) {
+        let stats = self.cache_manager.stats();
+        println!("\n{}", "⚡ LLM RESPONSE CACHE:".bold().cyan());
+        println!("{}", "─".repeat(60).dimmed());
+        println!("  Cache Hits    : {}", stats.hits.to_string().bold().green());
+        println!("  Cache Misses  : {}", stats.misses.to_string().bold());
+        println!("  Disk Entries  : {}", stats.cached_entries.to_string().bold().yellow());
+        println!("  Directory     : {}", stats.cache_dir.dimmed());
+        println!("{}", "─".repeat(60).dimmed());
+        println!("  To clear disk cache, run: {}\n", "/cache clear".bold().yellow());
     }
 }
 

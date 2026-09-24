@@ -1,3 +1,5 @@
+pub mod brain;
+pub mod cache;
 pub mod context;
 pub mod cost_tracker;
 pub mod executor;
@@ -9,8 +11,11 @@ pub mod roadmap;
 pub mod sandbox;
 pub mod session;
 pub mod signal;
+pub mod spinner;
 pub mod tool_policy;
 
+pub use brain::{Brain, BrainStats};
+pub use cache::{CacheManager, CacheStats};
 pub use context::{ContextAssembler, ContextCompressor, ProjectContext};
 pub use cost_tracker::CostTracker;
 pub use hooks::{HookEntry, HookManager, HookType};
@@ -20,5 +25,6 @@ pub use repl::{ReplEngine, REPL_BANNER};
 pub use roadmap::Roadmap;
 pub use sandbox::Sandbox;
 pub use signal::{install_signal_handler, is_shutdown_requested};
+pub use spinner::Spinner;
 pub use tool_policy::{AgentToolConfig, ToolPolicy};
 pub use session::{generate_session_id, get_session_dir, list_sessions, SessionCheckpoint, SessionSummary};

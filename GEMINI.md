@@ -80,6 +80,8 @@
   - `/sessions`: Lists all historical saved sessions in `.potato/sessions/`.
   - `/resume [id]`: Resumes a previous session checkpoint (latest by default, or by session ID).
   - `/reset`: Resets session memory and starts a clean session (or `/new`).
+  - `/brain`: Inspects project Brain knowledge, architectural conventions, and learned lessons.
+  - `/cache [clear]`: Views LLM response cache performance metrics or clears disk cache.
   - `/clear`: Clears the terminal screen.
   - `/exit` or `/quit`: Cleanly terminates the interactive session.
 - **CLI Subcommands & Options**:
