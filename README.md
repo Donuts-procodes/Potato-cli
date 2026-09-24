@@ -23,10 +23,10 @@
 
 ```bash
 # Launch interactive REPL mode:
-npx potato-agent
+npx potato-cli
 
 # Or run natural language objectives directly:
-npx potato-agent "Build a REST API in Go with SQLite"
+npx potato-cli "Build a REST API in Go with SQLite"
 ```
 
 ### 2. Global Installation
@@ -35,16 +35,16 @@ Install globally via your favorite package manager:
 
 ```bash
 # NPM
-npm install -g potato-agent
+npm install -g potato-cli
 
 # Bun
-bun add -g potato-agent
+bun add -g potato-cli
 
 # pnpm
-pnpm add -g potato-agent
+pnpm add -g potato-cli
 
 # Yarn
-yarn global add potato-agent
+yarn global add potato-cli
 ```
 
 Once installed, use either `pot` or `potato`:

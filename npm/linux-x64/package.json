@@ -1,7 +1,7 @@
 {
-  "name": "@potato-agent/linux-x64",
+  "name": "@potato-cli/linux-x64",
   "version": "0.1.0",
-  "description": "Linux x64 binary for potato-agent",
+  "description": "Linux x64 binary for potato-cli",
   "os": ["linux"],
   "cpu": ["x64"],
   "files": ["bin/potato"],

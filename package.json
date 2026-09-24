@@ -1,10 +1,9 @@
 {
-  "name": "potato-agent",
+  "name": "potato-cli",
   "version": "0.1.0",
   "description": "Autonomous Super Loop Agent Engine — native Rust CLI distributed via NPM",
   "bin": {
     "potato": "./bin/run.js",
-    "potato-agent": "./bin/run.js",
     "potato-cli": "./bin/run.js",
     "pot": "./bin/run.js"
   },
@@ -17,11 +16,11 @@
     "README.md"
   ],
   "optionalDependencies": {
-    "@potato-agent/darwin-arm64": "0.1.0",
-    "@potato-agent/darwin-x64": "0.1.0",
-    "@potato-agent/linux-x64": "0.1.0",
-    "@potato-agent/linux-arm64": "0.1.0",
-    "@potato-agent/win32-x64": "0.1.0"
+    "@potato-cli/darwin-arm64": "0.1.0",
+    "@potato-cli/darwin-x64": "0.1.0",
+    "@potato-cli/linux-x64": "0.1.0",
+    "@potato-cli/linux-arm64": "0.1.0",
+    "@potato-cli/win32-x64": "0.1.0"
   },
   "keywords": [
     "cli",
