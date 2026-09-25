@@ -29,6 +29,7 @@ pub struct ReplEngine {
     cache_manager: CacheManager,
     brain: Brain,
     rules: crate::engine::rules::RulesEngine,
+    execution_mode: crate::engine::approval::ExecutionMode,
 }
 
 impl ReplEngine {
@@ -55,6 +56,7 @@ impl ReplEngine {
             cache_manager,
             brain,
             rules,
+            execution_mode: crate::engine::approval::ExecutionMode::Autonomous,
         }
     }
 
@@ -140,6 +142,7 @@ impl ReplEngine {
         };
         println!("{} {}", "Tokens    :".bold().cyan(), token_str);
         println!("{} {}", "Rules     :".bold().cyan(), self.rules.summary().white());
+        println!("{} {}", "Mode      :".bold().cyan(), format!("{}", self.execution_mode).white());
         println!(
             "{} {} registered specialists",
             "Agents    :".bold().cyan(),
@@ -382,6 +385,27 @@ impl ReplEngine {
                     }
                 }
             }
+            "/mode" | "/yolo" => {
+                if arg.is_empty() && name != "/yolo" {
+                    println!("\nCurrent execution mode: {}", format!("{}", self.execution_mode).bold().green());
+                    println!("Available modes:");
+                    println!("  • {} : Runs fully autonomous (respects blocklists).", "autonomous".bold().yellow());
+                    println!("  • {} : Prompts for approval before mutating files or running commands.", "supervised".bold().yellow());
+                    println!("  • {} : Pure diagnostic mode; prohibits all writes, patches, and commands.", "readonly".bold().yellow());
+                    println!("Usage: /mode <autonomous|supervised|readonly> (or /yolo)\n");
+                } else if name == "/yolo" || arg == "autonomous" || arg == "auto" || arg == "yolo" {
+                    self.execution_mode = crate::engine::approval::ExecutionMode::Autonomous;
+                    println!("{} Switched mode to: {}\n", "✓".green(), self.execution_mode.to_string().bold().green());
+                } else if arg == "supervised" || arg == "ask" || arg == "prompt" {
+                    self.execution_mode = crate::engine::approval::ExecutionMode::Supervised;
+                    println!("{} Switched mode to: {}\n", "✓".green(), self.execution_mode.to_string().bold().yellow());
+                } else if arg == "readonly" || arg == "read" || arg == "safe" {
+                    self.execution_mode = crate::engine::approval::ExecutionMode::ReadOnly;
+                    println!("{} Switched mode to: {}\n", "✓".green(), self.execution_mode.to_string().bold().cyan());
+                } else {
+                    println!("{}", "Invalid mode. Choose: autonomous, supervised, or readonly".red());
+                }
+            }
             "/cost" => {
                 println!("\n{}", "📊 SESSION USAGE & COST METRICS:".bold().cyan());
                 let token_limit_info = if self.config.cost.max_tokens > 0 {
@@ -458,6 +482,7 @@ impl ReplEngine {
             ("/tokens [limit]", "View, set, or remove token limit (/tokens 100000 or /tokens off)"),
             ("/rules [subcmd]", "View or manage personality & system rules (from POTATO.md / GEMINI.md)"),
             ("/personality", "Alias for /rules: view, add, or initialize custom agent personality"),
+            ("/mode [mode]", "Switch execution mode (autonomous, supervised, readonly)"),
             ("/cost", "Display token usage metrics and real-time USD expenditure"),
             ("/session", "Inspect active session memory, context turns, and mutated files"),
             ("/sessions", "List all saved historical sessions"),
@@ -742,7 +767,8 @@ impl ReplEngine {
             .with_history(self.session_messages.clone())
             .with_cache(self.cache_manager.clone())
             .with_brain(self.brain.clone())
-            .with_rules(self.rules.clone());
+            .with_rules(self.rules.clone())
+            .with_execution_mode(self.execution_mode);
 
         match runner.run_session().await {
             Ok((summary, updated_messages)) => {

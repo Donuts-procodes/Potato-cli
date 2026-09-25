@@ -1,3 +1,4 @@
+pub mod approval;
 pub mod arcade;
 pub mod brain;
 pub mod cache;
@@ -16,6 +17,7 @@ pub mod signal;
 pub mod spinner;
 pub mod tool_policy;
 
+pub use approval::{ApprovalDecision, ApprovalGate, ExecutionMode};
 pub use brain::{Brain, BrainStats};
 pub use cache::{CacheManager, CacheStats};
 pub use context::{ContextAssembler, ContextCompressor, ProjectContext};

@@ -29,6 +29,7 @@ pub struct LoopRunner {
     cache_manager: Option<CacheManager>,
     brain: Option<Brain>,
     rules: Option<crate::engine::rules::RulesEngine>,
+    approval_gate: crate::engine::approval::ApprovalGate,
 }
 
 impl LoopRunner {
@@ -44,6 +45,7 @@ impl LoopRunner {
             cache_manager: None,
             brain: None,
             rules: None,
+            approval_gate: crate::engine::approval::ApprovalGate::default(),
         }
     }
 
@@ -87,12 +89,23 @@ impl LoopRunner {
         self
     }
 
+    pub fn with_approval_gate(mut self, gate: crate::engine::approval::ApprovalGate) -> Self {
+        self.approval_gate = gate;
+        self
+    }
+
+    pub fn with_execution_mode(mut self, mode: crate::engine::approval::ExecutionMode) -> Self {
+        self.approval_gate.mode = mode;
+        self
+    }
+
     pub async fn run(&self) -> Result<String> {
         let (summary, _) = self.run_session().await?;
         Ok(summary)
     }
 
     pub async fn run_session(&self) -> Result<(String, Vec<ChatMessage>)> {
+        let mut approval_gate = self.approval_gate.clone();
         let mut messages: Vec<ChatMessage> = if self.history.is_empty() {
             let mut system_prompt = build_system_prompt();
 
@@ -299,6 +312,30 @@ impl LoopRunner {
                         consecutive_failures += 1;
                         continue;
                     }
+                }
+            }
+
+            // Interactive human-in-the-loop approval gate
+            match approval_gate.request_approval(&agent_response.action)? {
+                crate::engine::approval::ApprovalDecision::Approved
+                | crate::engine::approval::ApprovalDecision::AlwaysAllowCategory(_) => {
+                    // Approved to proceed
+                }
+                crate::engine::approval::ApprovalDecision::Rejected(reason) => {
+                    println!("{} {}", "  🛑 ACTION REJECTED BY USER:".bold().yellow(), reason);
+                    messages.push(ChatMessage {
+                        role: "assistant".to_string(),
+                        content: serde_json::to_string(&agent_response)?,
+                    });
+                    messages.push(ChatMessage {
+                        role: "user".to_string(),
+                        content: format!("TOOL RESULT:\nexit_code: 1\nstdout:\n\nstderr:\n{}", reason),
+                    });
+                    consecutive_failures += 1;
+                    continue;
+                }
+                crate::engine::approval::ApprovalDecision::Abort => {
+                    return Err(anyhow::anyhow!("Super Loop execution aborted by user"));
                 }
             }
 
