@@ -8,7 +8,8 @@
   ╚══════════════════════════════════════════════════════════════╝
 ```
 
-[![Tests](https://img.shields.io/badge/tests-21%2F21%20passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-29%2F29%20passing-brightgreen.svg)]()
+[![npm](https://img.shields.io/npm/v/@donutman/potato-cli.svg)](https://www.npmjs.com/package/@donutman/potato-cli)
 [![Rust](https://img.shields.io/badge/rust-2021%20edition-orange.svg)]()
 [![Node](https://img.shields.io/badge/node-%3E%3D18-blue.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-purple.svg)]()
@@ -23,10 +24,10 @@
 
 ```bash
 # Launch interactive REPL mode:
-npx potato-cli
+npx @donutman/potato-cli
 
 # Or run natural language objectives directly:
-npx potato-cli "Build a REST API in Go with SQLite"
+npx @donutman/potato-cli "Build a REST API in Go with SQLite"
 ```
 
 ### 2. Global Installation
@@ -35,16 +36,16 @@ Install globally via your favorite package manager:
 
 ```bash
 # NPM
-npm install -g potato-cli
+npm install -g @donutman/potato-cli
 
 # Bun
-bun add -g potato-cli
+bun add -g @donutman/potato-cli
 
 # pnpm
-pnpm add -g potato-cli
+pnpm add -g @donutman/potato-cli
 
 # Yarn
-yarn global add potato-cli
+yarn global add @donutman/potato-cli
 ```
 
 Once installed, use either `pot` or `potato`:
@@ -62,13 +63,13 @@ pot
 
 - **macOS & Linux (Bash / Zsh)**:
   ```bash
-  curl -fsSL https://raw.githubusercontent.com/user/potato-cli/master/scripts/install.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/Donuts-procodes/Potato-cli/main/scripts/install.sh | bash
   ```
 
 ### 4. Via Cargo (Rust Toolchain)
 
 ```bash
-cargo install --git https://github.com/user/potato-cli
+cargo install --git https://github.com/Donuts-procodes/Potato-cli
 ```
 
 ### 5. Via Docker (Completely Sandboxed)

@@ -1,11 +1,11 @@
 {
-  "name": "potato-cli",
-  "version": "0.1.0",
+  "name": "@donutman/potato-cli",
+  "version": "0.1.1",
   "description": "Autonomous Super Loop Agent Engine — native Rust CLI distributed via NPM",
   "bin": {
-    "potato": "./bin/run.js",
-    "potato-cli": "./bin/run.js",
-    "pot": "./bin/run.js"
+    "potato": "bin/run.js",
+    "potato-cli": "bin/run.js",
+    "pot": "bin/run.js"
   },
   "scripts": {
     "postinstall": "node scripts/postinstall.js"
@@ -16,11 +16,11 @@
     "README.md"
   ],
   "optionalDependencies": {
-    "@potato-cli/darwin-arm64": "0.1.0",
-    "@potato-cli/darwin-x64": "0.1.0",
-    "@potato-cli/linux-x64": "0.1.0",
-    "@potato-cli/linux-arm64": "0.1.0",
-    "@potato-cli/win32-x64": "0.1.0"
+    "@donutman/darwin-arm64": "0.1.1",
+    "@donutman/darwin-x64": "0.1.1",
+    "@donutman/linux-x64": "0.1.1",
+    "@donutman/linux-arm64": "0.1.1",
+    "@donutman/win32-x64": "0.1.1"
   },
   "keywords": [
     "cli",
@@ -33,7 +33,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/user/potato-cli"
+    "url": "git+https://github.com/user/potato-cli.git"
   },
   "engines": {
     "node": ">=18"

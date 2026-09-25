@@ -7,11 +7,11 @@ const path = require("path");
 const fs = require("fs");
 
 const PLATFORMS = {
-  "darwin-arm64": "@potato-cli/darwin-arm64/bin/potato",
-  "darwin-x64": "@potato-cli/darwin-x64/bin/potato",
-  "linux-x64": "@potato-cli/linux-x64/bin/potato",
-  "linux-arm64": "@potato-cli/linux-arm64/bin/potato",
-  "win32-x64": "@potato-cli/win32-x64/bin/potato.exe",
+  "darwin-arm64": "@donutman/darwin-arm64/bin/potato",
+  "darwin-x64": "@donutman/darwin-x64/bin/potato",
+  "linux-x64": "@donutman/linux-x64/bin/potato",
+  "linux-arm64": "@donutman/linux-arm64/bin/potato",
+  "win32-x64": "@donutman/win32-x64/bin/potato.exe",
 };
 
 const key = `${process.platform}-${process.arch}`;

@@ -1,5 +1,5 @@
 {
-  "name": "@potato-cli/linux-arm64",
+  "name": "@donutman/linux-arm64",
   "version": "0.1.0",
   "description": "Linux ARM64 binary for potato-cli",
   "os": ["linux"],

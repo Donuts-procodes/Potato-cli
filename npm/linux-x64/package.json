@@ -1,10 +1,16 @@
 {
-  "name": "@potato-cli/linux-x64",
+  "name": "@donutman/linux-x64",
   "version": "0.1.0",
   "description": "Linux x64 binary for potato-cli",
-  "os": ["linux"],
-  "cpu": ["x64"],
-  "files": ["bin/potato"],
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "files": [
+    "bin/potato"
+  ],
   "preferUnplugged": true,
   "license": "MIT"
 }

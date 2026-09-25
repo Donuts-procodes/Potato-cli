@@ -1,5 +1,5 @@
 {
-  "name": "@potato-cli/darwin-x64",
+  "name": "@donutman/darwin-x64",
   "version": "0.1.0",
   "description": "macOS x64 (Intel) binary for potato-cli",
   "os": ["darwin"],

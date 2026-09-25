@@ -1,6 +1,6 @@
 {
-  "name": "@potato-cli/win32-x64",
-  "version": "0.1.0",
+  "name": "@donutman/win32-x64",
+  "version": "0.1.1",
   "description": "Windows x64 binary for potato-cli",
   "os": ["win32"],
   "cpu": ["x64"],
